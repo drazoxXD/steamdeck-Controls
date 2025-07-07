@@ -53,17 +53,19 @@ impl SteamInputManager {
         // Initialize analog actions with proper names (all start at 0,0)
         self.analog_actions.insert("Left Stick - Move".to_string(), (0.0, 0.0));
         self.analog_actions.insert("Right Stick - Look".to_string(), (0.0, 0.0));
-        self.analog_actions.insert("Triggers - Aim/Fire".to_string(), (0.0, 0.0));
+        self.analog_actions.insert("Left Trigger - Aim".to_string(), (0.0, 0.0));
+        self.analog_actions.insert("Right Trigger - Fire".to_string(), (0.0, 0.0));
         
         // Set up button mappings (map gamepad buttons to Steam Input action names)
+        // Note: In gilrs, LeftTrigger/RightTrigger are bumpers (LB/RB), LeftTrigger2/RightTrigger2 are triggers (LT/RT)
         self.button_mappings.insert(Button::South, "A (South) [ID: 0] - Jump".to_string());
         self.button_mappings.insert(Button::East, "B (East) [ID: 1] - Fire".to_string());
         self.button_mappings.insert(Button::West, "X (West) [ID: 2] - Reload".to_string());
         self.button_mappings.insert(Button::North, "Y (North) [ID: 3] - Menu".to_string());
-        self.button_mappings.insert(Button::LeftTrigger, "LB [ID: 4] - Use".to_string());
-        self.button_mappings.insert(Button::RightTrigger, "RB [ID: 5] - Sprint".to_string());
-        self.button_mappings.insert(Button::LeftTrigger2, "LT [ID: 6] - Aim".to_string());
-        self.button_mappings.insert(Button::RightTrigger2, "RT [ID: 7] - Fire".to_string());
+        self.button_mappings.insert(Button::LeftTrigger, "LB [ID: 4] - Use".to_string());        // Bumper
+        self.button_mappings.insert(Button::RightTrigger, "RB [ID: 5] - Sprint".to_string());    // Bumper
+        self.button_mappings.insert(Button::LeftTrigger2, "LT [ID: 6] - Aim".to_string());       // Trigger
+        self.button_mappings.insert(Button::RightTrigger2, "RT [ID: 7] - Fire".to_string());     // Trigger
         self.button_mappings.insert(Button::LeftThumb, "LSB [ID: 8] - Sprint".to_string());
         self.button_mappings.insert(Button::RightThumb, "RSB [ID: 9] - Crouch".to_string());
         self.button_mappings.insert(Button::Start, "Start [ID: 10] - Menu".to_string());
@@ -78,8 +80,8 @@ impl SteamInputManager {
         self.axis_mappings.insert(Axis::LeftStickY, "Left Stick - Move".to_string());
         self.axis_mappings.insert(Axis::RightStickX, "Right Stick - Look".to_string());
         self.axis_mappings.insert(Axis::RightStickY, "Right Stick - Look".to_string());
-        self.axis_mappings.insert(Axis::LeftZ, "Triggers - Aim/Fire".to_string());
-        self.axis_mappings.insert(Axis::RightZ, "Triggers - Aim/Fire".to_string());
+        self.axis_mappings.insert(Axis::LeftZ, "Left Trigger - Aim".to_string());
+        self.axis_mappings.insert(Axis::RightZ, "Right Trigger - Fire".to_string());
         
         log::info!("Steam Input initialized with real controller mappings");
         Ok(())
@@ -124,12 +126,20 @@ impl SteamInputManager {
                         self.analog_actions.insert(action_name.clone(), (current.0, -value));
                     }
                     Axis::LeftZ => {
-                        // Left trigger (L2) - store as X component
-                        self.analog_actions.insert(action_name.clone(), (value, current.1));
+                        // Left trigger (L2) - store as X component for "Left Trigger - Aim"
+                        self.analog_actions.insert(action_name.clone(), (value, 0.0));
+                        
+                        // Also update the digital action for LT button press
+                        let pressed = value > 0.1; // Threshold for digital press
+                        self.digital_actions.insert("LT [ID: 6] - Aim".to_string(), pressed);
                     }
                     Axis::RightZ => {
-                        // Right trigger (R2) - store as Y component
-                        self.analog_actions.insert(action_name.clone(), (current.0, value));
+                        // Right trigger (R2) - store as X component for "Right Trigger - Fire"
+                        self.analog_actions.insert(action_name.clone(), (value, 0.0));
+                        
+                        // Also update the digital action for RT button press
+                        let pressed = value > 0.1; // Threshold for digital press
+                        self.digital_actions.insert("RT [ID: 7] - Fire".to_string(), pressed);
                     }
                     _ => {
                         // Other axes - treat as X component
@@ -223,6 +233,37 @@ impl SteamInputManager {
 
     pub fn get_action_for_axis(&self, axis: Axis) -> Option<String> {
         self.axis_mappings.get(&axis).cloned()
+    }
+
+    pub fn get_debug_json(&self) -> String {
+        use serde_json::json;
+        
+        let debug_data = json!({
+            "initialized": self.initialized,
+            "controller_count": self.controller_handles.len(),
+            "connected_controllers": self.get_connected_controllers(),
+            "digital_actions": self.digital_actions,
+            "analog_actions": self.analog_actions,
+            "button_mappings": self.button_mappings.iter().map(|(button, action)| {
+                (format!("{:?}", button), action.clone())
+            }).collect::<std::collections::HashMap<_, _>>(),
+            "axis_mappings": self.axis_mappings.iter().map(|(axis, action)| {
+                (format!("{:?}", axis), action.clone())
+            }).collect::<std::collections::HashMap<_, _>>(),
+            "raw_controller_ids": self.controller_handles.iter().map(|id| format!("{:?}", id)).collect::<Vec<_>>(),
+            "axis_info": {
+                "LeftStickX": "ID 1 - Left stick horizontal",
+                "LeftStickY": "ID 2 - Left stick vertical", 
+                "LeftZ": "ID 3 - Left trigger (L2) analog",
+                "RightStickX": "ID 4 - Right stick horizontal",
+                "RightStickY": "ID 5 - Right stick vertical",
+                "RightZ": "ID 6 - Right trigger (R2) analog",
+                "DPadX": "ID 7 - D-pad horizontal",
+                "DPadY": "ID 8 - D-pad vertical"
+            }
+        });
+        
+        serde_json::to_string_pretty(&debug_data).unwrap_or_else(|_| "Failed to serialize debug data".to_string())
     }
 }
 

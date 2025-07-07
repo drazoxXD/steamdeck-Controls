@@ -287,7 +287,13 @@ impl App {
 }
 
 async fn run() -> Result<()> {
-    env_logger::init();
+    // Initialize logger but filter out WGPU D3D12 validation errors
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .filter_module("wgpu_hal", log::LevelFilter::Off)
+        .filter_module("wgpu_core", log::LevelFilter::Off)
+        .filter_module("wgpu", log::LevelFilter::Off)
+        .init();
     
     // Create channel for communication between WebSocket and UI
     let (tx, rx) = tokio::sync::mpsc::channel::<ControllerInputData>(100);

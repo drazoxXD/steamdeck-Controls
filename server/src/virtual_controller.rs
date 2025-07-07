@@ -70,7 +70,7 @@ impl VirtualController {
 
     fn update_button_state(&mut self, button: &str, pressed: bool) {
         use vigem_client::XButtons;
-        
+
         let button_flag = match button {
             "A (South)" => XButtons::A,
             "B (East)" => XButtons::B,
@@ -87,9 +87,21 @@ impl VirtualController {
             "D-Pad Down" => XButtons::DOWN,
             "D-Pad Left" => XButtons::LEFT,
             "D-Pad Right" => XButtons::RIGHT,
+            // Handle RT/LT as digital buttons too
+            "RT [ID: 7] - Fire" | "LT [ID: 6] - Aim" => {
+                // For RT/LT, set the trigger to 100% when pressed, 0% when released
+
+                if button.contains("RT") {
+                    self.gamepad_state.right_trigger = if pressed { 255 } else { 0 };
+                    log::info!("RT digital button: {} -> trigger value: {}", pressed, self.gamepad_state.right_trigger);
+                } else if button.contains("LT") {
+                    self.gamepad_state.left_trigger = if pressed { 255 } else { 0 };
+                    log::info!("LT digital button: {} -> trigger value: {}", pressed, self.gamepad_state.left_trigger);
+                }
+                return; // Don't process as normal button
+            }
             _ => return,
         };
-
         if pressed {
             self.gamepad_state.buttons.raw |= button_flag;
         } else {
@@ -140,6 +152,16 @@ impl VirtualController {
 
     pub fn is_connected(&self) -> bool {
         self.target.is_some()
+    }
+}
+
+impl std::fmt::Debug for VirtualController {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VirtualController")
+            .field("is_connected", &self.is_connected())
+            .field("button_states", &self.button_states)
+            .field("axis_states", &self.axis_states)
+            .finish()
     }
 }
 

@@ -246,29 +246,38 @@ impl App {
                 gilrs::EventType::ButtonPressed(button, _) => {
                     self.steam_input.update_from_controller_input(id, Some((button, true)), None);
                     
-                    // Add to network data
-                    network_data.button_events.push(ButtonEvent {
-                        button: button_to_string(button),
-                        pressed: true,
-                        timestamp,
-                    });
+                    // Don't send trigger buttons as digital events - they're handled as analog axes
+                    if !matches!(button, gilrs::Button::LeftTrigger2 | gilrs::Button::RightTrigger2) {
+                        network_data.button_events.push(ButtonEvent {
+                            button: button_to_string(button),
+                            pressed: true,
+                            timestamp,
+                        });
+                    }
                     
                     log::info!("Button pressed: {:?}", button);
                 }
                 gilrs::EventType::ButtonReleased(button, _) => {
                     self.steam_input.update_from_controller_input(id, Some((button, false)), None);
                     
-                    // Add to network data
-                    network_data.button_events.push(ButtonEvent {
-                        button: button_to_string(button),
-                        pressed: false,
-                        timestamp,
-                    });
+                    // Don't send trigger buttons as digital events - they're handled as analog axes
+                    if !matches!(button, gilrs::Button::LeftTrigger2 | gilrs::Button::RightTrigger2) {
+                        network_data.button_events.push(ButtonEvent {
+                            button: button_to_string(button),
+                            pressed: false,
+                            timestamp,
+                        });
+                    }
                     
                     log::info!("Button released: {:?}", button);
                 }
                 gilrs::EventType::AxisChanged(axis, value, _) => {
                     self.steam_input.update_from_controller_input(id, None, Some((axis, value)));
+                    
+                    // Debug log for trigger axes
+                    if matches!(axis, gilrs::Axis::LeftZ | gilrs::Axis::RightZ) {
+                        log::info!("Trigger axis detected: {:?} = {:.3}", axis, value);
+                    }
                     
                     // Send all trigger values (LeftZ/RightZ) and significant stick changes
                     let should_send = match axis {
@@ -282,6 +291,11 @@ impl App {
                             value,
                             timestamp,
                         });
+                        
+                        // Debug log for network data
+                        if matches!(axis, gilrs::Axis::LeftZ | gilrs::Axis::RightZ) {
+                            log::info!("Sending trigger network data: {} = {:.3}", axis_to_string(axis), value);
+                        }
                     }
                 }
                 gilrs::EventType::ButtonChanged(button, value, _) => {
@@ -289,12 +303,14 @@ impl App {
                     let pressed = value > 0.5;
                     self.steam_input.update_from_controller_input(id, Some((button, pressed)), None);
                     
-                    // Add to network data
-                    network_data.button_events.push(ButtonEvent {
-                        button: button_to_string(button),
-                        pressed,
-                        timestamp,
-                    });
+                    // Don't send trigger buttons as digital events - they're handled as analog axes
+                    if !matches!(button, gilrs::Button::LeftTrigger2 | gilrs::Button::RightTrigger2) {
+                        network_data.button_events.push(ButtonEvent {
+                            button: button_to_string(button),
+                            pressed,
+                            timestamp,
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -328,10 +344,10 @@ impl App {
                         axis_events: Vec::new(),
                     };
                     
-                    // Add all button states
+                    // Add all button states (except triggers which are handled as analog)
                     for button in [
                         gilrs::Button::South, gilrs::Button::East, gilrs::Button::North, gilrs::Button::West,
-                        gilrs::Button::LeftTrigger, gilrs::Button::RightTrigger, gilrs::Button::LeftTrigger2, gilrs::Button::RightTrigger2,
+                        gilrs::Button::LeftTrigger, gilrs::Button::RightTrigger, // Bumpers only
                         gilrs::Button::Select, gilrs::Button::Start, gilrs::Button::Mode,
                         gilrs::Button::LeftThumb, gilrs::Button::RightThumb,
                         gilrs::Button::DPadUp, gilrs::Button::DPadDown, gilrs::Button::DPadLeft, gilrs::Button::DPadRight,
@@ -384,7 +400,7 @@ impl App {
         let ui = self.imgui.frame();
 
         // Render controller debug UI
-        self.controller_debug.render(&ui);
+        self.controller_debug.render(&ui, &self.steam_input);
 
         // Handle cursor before rendering
         let cursor = ui.mouse_cursor();

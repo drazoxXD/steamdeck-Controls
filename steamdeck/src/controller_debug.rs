@@ -43,6 +43,7 @@ pub struct ControllerDebugUI {
     show_steam_input: bool,
     show_controller_mapping: bool,
     show_input_history: bool,
+    show_debug_json: bool,
     input_history: Vec<String>,
     max_history_size: usize,
     steam_input_data: Option<SteamInputData>,
@@ -72,6 +73,7 @@ impl ControllerDebugUI {
             show_steam_input: true,
             show_controller_mapping: true,
             show_input_history: true,
+            show_debug_json: true,
             input_history: Vec::new(),
             max_history_size: 100,
             steam_input_data: None,
@@ -113,7 +115,13 @@ impl ControllerDebugUI {
             EventType::AxisChanged(axis, value, _) => {
                 if let Some(controller) = self.controllers.get_mut(&id) {
                     controller.update_axis(axis, value);
-                    self.add_to_history(format!("Controller {} - Axis {:?}: {:.3}", id, axis, value));
+                    
+                    // Special logging for triggers
+                    if matches!(axis, Axis::LeftZ | Axis::RightZ) {
+                        self.add_to_history(format!("Controller {} - TRIGGER {:?}: {:.3}", id, axis, value));
+                    } else {
+                        self.add_to_history(format!("Controller {} - Axis {:?}: {:.3}", id, axis, value));
+                    }
                 }
             }
             EventType::ButtonChanged(button, value, _) => {
@@ -145,7 +153,7 @@ impl ControllerDebugUI {
         }
     }
 
-    pub fn render(&mut self, ui: &Ui) {
+    pub fn render(&mut self, ui: &Ui, steam_input: &SteamInputManager) {
         // Main menu bar
         ui.main_menu_bar(|| {
             ui.menu("View", || {
@@ -153,6 +161,12 @@ impl ControllerDebugUI {
                 ui.checkbox("Steam Input", &mut self.show_steam_input);
                 ui.checkbox("Controller Mapping", &mut self.show_controller_mapping);
                 ui.checkbox("Input History", &mut self.show_input_history);
+                ui.checkbox("Debug JSON", &mut self.show_debug_json);
+            });
+            ui.menu("Debug", || {
+                if ui.menu_item("Test Trigger Detection") {
+                    self.add_to_history("Testing trigger detection - press triggers now".to_string());
+                }
             });
         });
 
@@ -201,7 +215,36 @@ impl ControllerDebugUI {
                             
                             ui.text("Axes:");
                             ui.indent();
+                            
+                            // Show triggers separately for better visibility
+                            ui.text("Triggers:");
+                            ui.indent();
+                            if let Some(&lt_value) = controller.axes.get(&Axis::LeftZ) {
+                                let color = if lt_value > 0.01 {
+                                    [1.0, 0.5, 0.0, 1.0] // Orange for active triggers
+                                } else {
+                                    [0.7, 0.7, 0.7, 1.0]
+                                };
+                                ui.text_colored(color, &format!("Left Trigger (LeftZ): {:.3}", lt_value));
+                            }
+                            if let Some(&rt_value) = controller.axes.get(&Axis::RightZ) {
+                                let color = if rt_value > 0.01 {
+                                    [1.0, 0.5, 0.0, 1.0] // Orange for active triggers
+                                } else {
+                                    [0.7, 0.7, 0.7, 1.0]
+                                };
+                                ui.text_colored(color, &format!("Right Trigger (RightZ): {:.3}", rt_value));
+                            }
+                            ui.unindent();
+                            
+                            ui.text("Other Axes:");
+                            ui.indent();
                             for (axis, &value) in &controller.axes {
+                                // Skip triggers as they're shown above
+                                if matches!(axis, Axis::LeftZ | Axis::RightZ) {
+                                    continue;
+                                }
+                                
                                 let color = if value.abs() > 0.1 {
                                     [1.0, 1.0, 0.0, 1.0]
                                 } else {
@@ -359,6 +402,26 @@ impl ControllerDebugUI {
                     ui.text(&format!("Connected to: {}:{}", self.server_ip, self.server_port));
                 }
             });
+
+        // Debug JSON display
+        if self.show_debug_json {
+            ui.window("Debug JSON")
+                .size([600.0, 500.0], Condition::FirstUseEver)
+                .build(|| {
+                    ui.text("Complete controller state as JSON:");
+                    ui.separator();
+                    
+                    // Get the JSON debug data from Steam Input Manager
+                    let debug_json = steam_input.get_debug_json();
+                    
+                    // Use a scrollable text area for the JSON
+                    ui.child_window("json_scroll")
+                        .size([0.0, 0.0])
+                        .build(|| {
+                            ui.text_wrapped(&debug_json);
+                        });
+                });
+        }
     }
 
     // Network-related methods

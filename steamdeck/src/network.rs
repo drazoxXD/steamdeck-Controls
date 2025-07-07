@@ -112,8 +112,8 @@ pub fn button_to_string(button: Button) -> String {
         Button::West => "X (West)".to_string(),
         Button::LeftTrigger => "LB".to_string(),
         Button::RightTrigger => "RB".to_string(),
-        Button::LeftTrigger2 => "LT".to_string(),
-        Button::RightTrigger2 => "RT".to_string(),
+        Button::LeftTrigger2 => "Aim".to_string(),  // Left Trigger
+        Button::RightTrigger2 => "Fire".to_string(), // Right Trigger
         Button::Select => "Select".to_string(),
         Button::Start => "Start".to_string(),
         Button::Mode => "Guide".to_string(),
@@ -131,10 +131,10 @@ pub fn axis_to_string(axis: Axis) -> String {
     match axis {
         Axis::LeftStickX => "Left Stick X".to_string(),
         Axis::LeftStickY => "Left Stick Y".to_string(),
-        Axis::LeftZ => "LT Axis".to_string(),
+        Axis::LeftZ => "LeftZ".to_string(),    // Left Trigger analog
         Axis::RightStickX => "Right Stick X".to_string(),
         Axis::RightStickY => "Right Stick Y".to_string(),
-        Axis::RightZ => "RT Axis".to_string(),
+        Axis::RightZ => "RightZ".to_string(),  // Right Trigger analog
         Axis::DPadX => "D-Pad X".to_string(),
         Axis::DPadY => "D-Pad Y".to_string(),
         _ => format!("{:?}", axis),

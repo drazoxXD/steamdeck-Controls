@@ -1,7 +1,7 @@
 use imgui::*;
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::ControllerInputData;
+use crate::{ControllerInputData, AxisEvent};
 
 #[derive(Debug, Clone)]
 pub struct ReceivedInputEvent {
@@ -19,6 +19,8 @@ pub struct ControllerReceiver {
     max_events: usize,
     server_status: String,
     last_received_timestamp: u64,
+    // Callback to send trigger events to virtual controller
+    trigger_callback: Option<Box<dyn Fn(&str, f32) + Send + Sync>>,
 }
 
 impl ControllerReceiver {
@@ -30,6 +32,7 @@ impl ControllerReceiver {
             max_events: 100,
             server_status: "Starting...".to_string(),
             last_received_timestamp: 0,
+            trigger_callback: None,
         }
     }
 
@@ -65,6 +68,19 @@ impl ControllerReceiver {
             
             self.recent_events.push_back(event);
             self.total_events_received += 1;
+            
+            // Special handling for RT/LT digital button events
+            if button_event.button.contains("RT [ID: 7]") || button_event.button.contains("Right Trigger") {
+                log::info!("RT digital button event: {} -> {}", button_event.button, button_event.pressed);
+                if let Some(ref callback) = self.trigger_callback {
+                    callback("RT Axis", if button_event.pressed { 1.0 } else { 0.0 });
+                }
+            } else if button_event.button.contains("LT [ID: 6]") || button_event.button.contains("Left Trigger") {
+                log::info!("LT digital button event: {} -> {}", button_event.button, button_event.pressed);
+                if let Some(ref callback) = self.trigger_callback {
+                    callback("LT Axis", if button_event.pressed { 1.0 } else { 0.0 });
+                }
+            }
         }
 
         // Add axis events
@@ -79,6 +95,35 @@ impl ControllerReceiver {
             
             self.recent_events.push_back(event);
             self.total_events_received += 1;
+            
+            // Special handling for RT/LT triggers - set to 100% when pressed
+            if axis_event.axis.contains("RightZ") || axis_event.axis.contains("Right Trigger") {
+                // RT (Right Trigger) pressed - set to 100%
+                if axis_event.value > 0.1 {
+                    log::info!("RT pressed - setting Xbox 360 RT to 100%");
+                    if let Some(ref callback) = self.trigger_callback {
+                        callback("RT Axis", 1.0); // Set to 100%
+                    }
+                } else {
+                    log::info!("RT released - setting Xbox 360 RT to 0%");
+                    if let Some(ref callback) = self.trigger_callback {
+                        callback("RT Axis", 0.0); // Set to 0%
+                    }
+                }
+            } else if axis_event.axis.contains("LeftZ") || axis_event.axis.contains("Left Trigger") {
+                // LT (Left Trigger) pressed - set to 100%
+                if axis_event.value > 0.1 {
+                    log::info!("LT pressed - setting Xbox 360 LT to 100%");
+                    if let Some(ref callback) = self.trigger_callback {
+                        callback("LT Axis", 1.0); // Set to 100%
+                    }
+                } else {
+                    log::info!("LT released - setting Xbox 360 LT to 0%");
+                    if let Some(ref callback) = self.trigger_callback {
+                        callback("LT Axis", 0.0); // Set to 0%
+                    }
+                }
+            }
         }
 
         // Keep only the most recent events
@@ -87,6 +132,13 @@ impl ControllerReceiver {
         }
 
         self.last_received_timestamp = current_time;
+    }
+
+    pub fn set_trigger_callback<F>(&mut self, callback: F) 
+    where
+        F: Fn(&str, f32) + Send + Sync + 'static,
+    {
+        self.trigger_callback = Some(Box::new(callback));
     }
 
     pub fn render(&mut self, ui: &Ui) {
