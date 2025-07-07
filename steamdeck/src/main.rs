@@ -33,7 +33,7 @@ pub struct App {
     network_streamer: NetworkStreamer,
     pending_connect: Option<(String, i32)>,
     pending_disconnect: bool,
-    last_mirror_time: std::time::Instant,
+    last_sync_time: std::time::Instant,
 }
 
 impl App {
@@ -118,6 +118,7 @@ impl App {
             network_streamer,
             pending_connect: None,
             pending_disconnect: false,
+            last_sync_time: std::time::Instant::now(),
         })
     }
 
@@ -269,8 +270,13 @@ impl App {
                 gilrs::EventType::AxisChanged(axis, value, _) => {
                     self.steam_input.update_from_controller_input(id, None, Some((axis, value)));
                     
-                    // Only send significant axis changes to reduce network traffic
-                    if value.abs() > 0.1 {
+                    // Send all trigger values (LeftZ/RightZ) and significant stick changes
+                    let should_send = match axis {
+                        gilrs::Axis::LeftZ | gilrs::Axis::RightZ => true,  // Always send trigger values
+                        _ => value.abs() > 0.1,  // Only send significant changes for other axes
+                    };
+                    
+                    if should_send {
                         network_data.axis_events.push(AxisEvent {
                             axis: axis_to_string(axis),
                             value,
@@ -303,6 +309,59 @@ impl App {
             // Try to send the data
             if let Err(e) = self.network_streamer.send_controller_data(network_data) {
                 log::error!("Failed to send network data: {}", e);
+            }
+        }
+
+        // Handle sync - send all controller data every 200ms if enabled
+        if self.controller_debug.is_sync_enabled() && self.network_streamer.is_connected() {
+            let now = std::time::Instant::now();
+            if now.duration_since(self.last_sync_time) >= std::time::Duration::from_millis(200) {
+                self.last_sync_time = now;
+                
+                // Send current state of all controllers
+                for controller in self.gilrs.gamepads() {
+                    let (id, gamepad) = controller;
+                    let mut sync_data = ControllerInputData {
+                        timestamp: get_current_timestamp(),
+                        controller_id: usize::from(id) as u32,
+                        button_events: Vec::new(),
+                        axis_events: Vec::new(),
+                    };
+                    
+                    // Add all button states
+                    for button in [
+                        gilrs::Button::South, gilrs::Button::East, gilrs::Button::North, gilrs::Button::West,
+                        gilrs::Button::LeftTrigger, gilrs::Button::RightTrigger, gilrs::Button::LeftTrigger2, gilrs::Button::RightTrigger2,
+                        gilrs::Button::Select, gilrs::Button::Start, gilrs::Button::Mode,
+                        gilrs::Button::LeftThumb, gilrs::Button::RightThumb,
+                        gilrs::Button::DPadUp, gilrs::Button::DPadDown, gilrs::Button::DPadLeft, gilrs::Button::DPadRight,
+                    ] {
+                        sync_data.button_events.push(ButtonEvent {
+                            button: button_to_string(button),
+                            pressed: gamepad.is_pressed(button),
+                            timestamp: get_current_timestamp(),
+                        });
+                    }
+                    
+                    // Add all axis states (including triggers as analog)
+                    for axis in [
+                        gilrs::Axis::LeftStickX, gilrs::Axis::LeftStickY, 
+                        gilrs::Axis::RightStickX, gilrs::Axis::RightStickY,
+                        gilrs::Axis::LeftZ, gilrs::Axis::RightZ,  // Triggers as analog
+                        gilrs::Axis::DPadX, gilrs::Axis::DPadY,
+                    ] {
+                        sync_data.axis_events.push(AxisEvent {
+                            axis: axis_to_string(axis),
+                            value: gamepad.value(axis),
+                            timestamp: get_current_timestamp(),
+                        });
+                    }
+                    
+                    // Send the sync data
+                    if let Err(e) = self.network_streamer.send_controller_data(sync_data) {
+                        log::error!("Failed to send sync controller data: {}", e);
+                    }
+                }
             }
         }
 

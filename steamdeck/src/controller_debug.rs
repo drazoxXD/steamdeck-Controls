@@ -81,7 +81,7 @@ impl ControllerDebugUI {
             server_port: "8080".to_string(),
             should_connect: false,
             should_disconnect: false,
-            mirroring_enabled: false,
+            sync_enabled: false,
         }
     }
 
@@ -326,9 +326,9 @@ impl ControllerDebugUI {
                 
                 ui.separator();
                 
-                ui.checkbox("Enable Mirroring (Send all data every 1ms)", &mut self.mirroring_enabled);
-                if self.mirroring_enabled {
-                    ui.text_colored([1.0, 1.0, 0.0, 1.0], "⚠ High bandwidth mode - sends all controller data continuously");
+                ui.checkbox("Enable Sync (Send all data every 200ms)", &mut self.sync_enabled);
+                if self.sync_enabled {
+                    ui.text_colored([0.0, 1.0, 0.0, 1.0], "✓ Syncs all controller data every 200ms to reset positions");
                 }
                 
                 ui.separator();
@@ -388,7 +388,7 @@ impl ControllerDebugUI {
         false
     }
 
-    pub fn is_mirroring_enabled(&self) -> bool {
-        self.mirroring_enabled
+    pub fn is_sync_enabled(&self) -> bool {
+        self.sync_enabled
     }
 }
