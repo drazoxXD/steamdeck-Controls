@@ -1,10 +1,12 @@
-name: Rust
+name: Rust Release
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  # Or use this to only release on tags:
+  # push:
+  #   tags:
+  #     - 'v*.*.*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,16 +20,46 @@ jobs:
 
       - name: Build server
         working-directory: ./server
-        run: rustup target add x86_64-pc-windows-gnu
-
-      - name: Test server
-        working-directory: ./server
-        run: cargo test --verbose
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo build --release --target x86_64-pc-windows-gnu
 
       - name: Build steamdeck
         working-directory: ./steamdeck
-        run: cargo build --verbose
+        run: cargo build --release
 
-      - name: Test steamdeck
-        working-directory: ./steamdeck
-        run: cargo test --verbose
+      - name: Get version
+        id: get_version
+        run: |
+          echo "VERSION=$(date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_ENV
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          release_name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload server executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./server/target/x86_64-pc-windows-gnu/release/server.exe
+          asset_name: server.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload steamdeck executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./steamdeck/target/release/steamdeck.exe
+          asset_name: steamdeck.exe
+          asset_content_type: application/octet-stream
