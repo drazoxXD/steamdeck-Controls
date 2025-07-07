@@ -52,3 +52,11 @@ Turn your SteamDeck into a wireless Xbox 360 controller! This project sends butt
 - Make sure both your PC and SteamDeck are on the same local network.
 - For best results, use a stable Wi-Fi connection.
 - Feedback, contributions, and bug reports are welcome!
+
+---
+
+## 🚦 Project Status & Maintenance
+
+This project is provided as-is and is not guaranteed to receive further development or feature updates.  
+**I am not required to develop this project further.**  
+Bug reports and pull requests are welcome, but please understand that ongoing support or new features may not be provided.
