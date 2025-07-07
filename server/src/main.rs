@@ -116,7 +116,6 @@ impl App {
         let controller_receiver = ControllerReceiver::new();
         
         let mut virtual_controller = VirtualController::new()?;
-        // Create the virtual controller immediately
         if let Err(e) = virtual_controller.create_controller() {
             log::error!("Failed to create virtual controller: {}", e);
             log::info!("Make sure ViGEm Bus Driver is installed");
@@ -148,7 +147,6 @@ impl App {
     }
 
     fn input(&mut self, event: &WindowEvent, window: &Window) -> bool {
-        // Create a WindowEvent that owns the data
         let owned_event = match event {
             WindowEvent::CloseRequested => WindowEvent::CloseRequested,
             WindowEvent::Resized(size) => WindowEvent::Resized(*size),
@@ -185,7 +183,6 @@ impl App {
     fn update(&mut self) {
         // Check for new controller events from WebSocket
         while let Ok(controller_data) = self.event_receiver.try_recv() {
-            // Send the controller data to the virtual controller
             if let Err(e) = self.virtual_controller.process_controller_input(controller_data.clone()) {
                 log::error!("Failed to process controller input: {}", e);
             }
@@ -208,10 +205,8 @@ impl App {
         self.platform.prepare_frame(self.imgui.io_mut(), window).expect("Failed to prepare frame");
         let ui = self.imgui.frame();
 
-        // Render controller receiver UI
         self.controller_receiver.render(&ui);
         
-        // Render virtual controller status
         ui.window("Virtual Xbox Controller")
             .size([400.0, 300.0], imgui::Condition::FirstUseEver)
             .build(|| {
@@ -248,7 +243,6 @@ impl App {
                 }
             });
 
-        // Handle cursor before rendering
         let cursor = ui.mouse_cursor();
         if self.last_cursor != cursor {
             self.last_cursor = cursor;
@@ -287,7 +281,6 @@ impl App {
 }
 
 async fn run() -> Result<()> {
-    // Initialize logger but filter out WGPU D3D12 validation errors
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .filter_module("wgpu_hal", log::LevelFilter::Off)
@@ -295,7 +288,6 @@ async fn run() -> Result<()> {
         .filter_module("wgpu", log::LevelFilter::Off)
         .init();
     
-    // Create channel for communication between WebSocket and UI
     let (tx, rx) = tokio::sync::mpsc::channel::<ControllerInputData>(100);
     
     let event_loop = EventLoop::new();
@@ -386,7 +378,6 @@ async fn handle_connection(stream: tokio::net::TcpStream, event_sender: tokio::s
                         0
                     };
                     
-                    // Print to console (as before)
                     for button_event in &controller_data.button_events {
                         println!("Button: {} - {} ({}ms delay)", 
                             button_event.button, 
@@ -401,7 +392,6 @@ async fn handle_connection(stream: tokio::net::TcpStream, event_sender: tokio::s
                             delay);
                     }
                     
-                    // Send to UI
                     if let Err(e) = event_sender.send(controller_data).await {
                         log::error!("Failed to send controller data to UI: {}", e);
                         break;

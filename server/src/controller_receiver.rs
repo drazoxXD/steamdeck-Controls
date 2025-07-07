@@ -37,8 +37,6 @@ impl ControllerReceiver {
     }
 
     pub fn update(&mut self) {
-        // This would be called from the main loop
-        // In a real implementation, you'd update the server status and client count here
         self.server_status = "Listening on 192.168.1.185:8080".to_string();
     }
 
@@ -54,7 +52,6 @@ impl ControllerReceiver {
             0
         };
 
-        // Add button events
         for button_event in &data.button_events {
             let event = ReceivedInputEvent {
                 timestamp: current_time,
@@ -69,7 +66,7 @@ impl ControllerReceiver {
             self.recent_events.push_back(event);
             self.total_events_received += 1;
             
-            // Special handling for RT/LT digital button events
+            // Todo fix RT/LT triggers
             if button_event.button.contains("RT [ID: 7]") || button_event.button.contains("Right Trigger") {
                 log::info!("RT digital button event: {} -> {}", button_event.button, button_event.pressed);
                 if let Some(ref callback) = self.trigger_callback {
@@ -83,7 +80,6 @@ impl ControllerReceiver {
             }
         }
 
-        // Add axis events
         for axis_event in &data.axis_events {
             let event = ReceivedInputEvent {
                 timestamp: current_time,
@@ -96,9 +92,7 @@ impl ControllerReceiver {
             self.recent_events.push_back(event);
             self.total_events_received += 1;
             
-            // Special handling for RT/LT triggers - set to 100% when pressed
             if axis_event.axis.contains("RightZ") || axis_event.axis.contains("Right Trigger") {
-                // RT (Right Trigger) pressed - set to 100%
                 if axis_event.value > 0.1 {
                     log::info!("RT pressed - setting Xbox 360 RT to 100%");
                     if let Some(ref callback) = self.trigger_callback {
@@ -111,7 +105,6 @@ impl ControllerReceiver {
                     }
                 }
             } else if axis_event.axis.contains("LeftZ") || axis_event.axis.contains("Left Trigger") {
-                // LT (Left Trigger) pressed - set to 100%
                 if axis_event.value > 0.1 {
                     log::info!("LT pressed - setting Xbox 360 LT to 100%");
                     if let Some(ref callback) = self.trigger_callback {
@@ -126,7 +119,6 @@ impl ControllerReceiver {
             }
         }
 
-        // Keep only the most recent events
         while self.recent_events.len() > self.max_events {
             self.recent_events.pop_front();
         }
@@ -142,7 +134,6 @@ impl ControllerReceiver {
     }
 
     pub fn render(&mut self, ui: &Ui) {
-        // Main menu bar
         ui.main_menu_bar(|| {
             ui.menu("View", || {
                 ui.menu_item("Controller Events");
@@ -150,7 +141,6 @@ impl ControllerReceiver {
             });
         });
 
-        // Server Status Window
         ui.window("Server Status")
             .size([400.0, 200.0], Condition::FirstUseEver)
             .build(|| {
@@ -178,7 +168,6 @@ impl ControllerReceiver {
                 }
             });
 
-        // Controller Events Window
         ui.window("Controller Events")
             .size([800.0, 600.0], Condition::FirstUseEver)
             .build(|| {
@@ -219,7 +208,6 @@ impl ControllerReceiver {
                         [1.0, 0.0, 0.0, 1.0] // Red - poor
                     };
                     
-                    // Format timestamp
                     let timestamp_str = format!("{:.3}", (event.timestamp % 100000) as f64 / 1000.0);
                     ui.text(&timestamp_str);
                     ui.next_column();
@@ -247,7 +235,6 @@ impl ControllerReceiver {
                 ui.columns(1, "", false);
             });
 
-        // Statistics Window
         ui.window("Performance Statistics")
             .size([400.0, 300.0], Condition::FirstUseEver)
             .build(|| {
