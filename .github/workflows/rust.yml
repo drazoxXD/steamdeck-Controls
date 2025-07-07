@@ -16,13 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Windows target
+      - name: Build server
+        working-directory: ./server
         run: rustup target add x86_64-pc-windows-gnu
 
-      - name: Build project1 for Windows
-        working-directory: ./project1
-        run: cargo build --target x86_64-pc-windows-gnu --verbose
+      - name: Test server
+        working-directory: ./server
+        run: cargo test --verbose
 
-      - name: Build project2 for Windows
-        working-directory: ./project2
-        run: cargo build --target x86_64-pc-windows-gnu --verbose
+      - name: Build steamdeck
+        working-directory: ./steamdeck
+        run: cargo build --verbose
+
+      - name: Test steamdeck
+        working-directory: ./steamdeck
+        run: cargo test --verbose
