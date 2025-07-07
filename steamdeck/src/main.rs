@@ -61,7 +61,7 @@ impl App {
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats.iter()
             .copied()
-            .find(|f| f.describe().srgb)
+            .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -116,17 +116,75 @@ impl App {
     }
 
     fn input(&mut self, event: &WindowEvent, window: &Window) -> bool {
-        self.platform.handle_event(self.imgui.io_mut(), window, &WinitEvent::WindowEvent { window_id: window.id(), event: event.clone() });
+        // Create a WindowEvent that owns the data
+        let owned_event = match event {
+            WindowEvent::CloseRequested => WindowEvent::CloseRequested,
+            WindowEvent::Resized(size) => WindowEvent::Resized(*size),
+
+            WindowEvent::CursorMoved { device_id, position, modifiers } => {
+                WindowEvent::CursorMoved { device_id: *device_id, position: *position, modifiers: *modifiers }
+            }
+            WindowEvent::CursorEntered { device_id } => {
+                WindowEvent::CursorEntered { device_id: *device_id }
+            }
+            WindowEvent::CursorLeft { device_id } => {
+                WindowEvent::CursorLeft { device_id: *device_id }
+            }
+            WindowEvent::MouseWheel { device_id, delta, phase, modifiers } => {
+                WindowEvent::MouseWheel { device_id: *device_id, delta: *delta, phase: *phase, modifiers: *modifiers }
+            }
+            WindowEvent::MouseInput { device_id, state, button, modifiers } => {
+                WindowEvent::MouseInput { device_id: *device_id, state: *state, button: *button, modifiers: *modifiers }
+            }
+            WindowEvent::KeyboardInput { device_id, input, is_synthetic } => {
+                WindowEvent::KeyboardInput { device_id: *device_id, input: *input, is_synthetic: *is_synthetic }
+            }
+            _ => return false, // Skip other events
+        };
+        
+        let winit_event = WinitEvent::WindowEvent { 
+            window_id: window.id(), 
+            event: owned_event 
+        };
+        
+        self.platform.handle_event::<()>(self.imgui.io_mut(), window, &winit_event);
         false
     }
 
     fn update(&mut self) {
         // Poll controller events
         while let Some(Event { id, event, time }) = self.gilrs.next_event() {
-            self.controller_debug.handle_gilrs_event(id, event, time.as_secs_f64());
+            // Update controller debug UI
+            self.controller_debug.handle_gilrs_event(id, event, time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64());
+            
+            // Update Steam Input with real controller data
+            match event {
+                gilrs::EventType::Connected => {
+                    log::info!("Controller {} connected", id);
+                }
+                gilrs::EventType::Disconnected => {
+                    log::info!("Controller {} disconnected", id);
+                    self.steam_input.remove_controller(id);
+                }
+                gilrs::EventType::ButtonPressed(button, _) => {
+                    self.steam_input.update_from_controller_input(id, Some((button, true)), None);
+                }
+                gilrs::EventType::ButtonReleased(button, _) => {
+                    self.steam_input.update_from_controller_input(id, Some((button, false)), None);
+                }
+                gilrs::EventType::AxisChanged(axis, value, _) => {
+                    self.steam_input.update_from_controller_input(id, None, Some((axis, value)));
+                }
+                gilrs::EventType::ButtonChanged(button, value, _) => {
+                    // Treat as digital input with threshold
+                    let pressed = value > 0.5;
+                    self.steam_input.update_from_controller_input(id, Some((button, pressed)), None);
+                }
+                _ => {}
+            }
         }
 
-        // Update Steam Input
+        // Update Steam Input (this now just maintains internal state)
         self.steam_input.update();
         
         // Update controller debug UI with Steam Input data
@@ -147,6 +205,13 @@ impl App {
         // Render controller debug UI
         self.controller_debug.render(&ui);
 
+        // Handle cursor before rendering
+        let cursor = ui.mouse_cursor();
+        if self.last_cursor != cursor {
+            self.last_cursor = cursor;
+            self.platform.prepare_render(&ui, window);
+        }
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -159,24 +224,17 @@ impl App {
                         b: 0.3,
                         a: 1.0,
                     }),
-                    store: wgpu::StoreOp::Store,
+                    store: true,
                 },
             })],
             depth_stencil_attachment: None,
         });
 
-        let draw_data = ui.render();
+        let draw_data = self.imgui.render();
         self.renderer.render(&draw_data, &self.queue, &self.device, &mut render_pass)
             .expect("Rendering failed");
 
         drop(render_pass);
-
-        // Handle cursor
-        let cursor = ui.mouse_cursor();
-        if self.last_cursor != cursor {
-            self.last_cursor = cursor;
-            self.platform.prepare_render(&ui, window);
-        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

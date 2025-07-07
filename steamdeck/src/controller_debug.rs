@@ -54,6 +54,8 @@ pub struct SteamInputData {
     pub analog_actions: HashMap<String, (f32, f32)>,
     pub controller_count: usize,
     pub connected_controllers: Vec<String>,
+    pub button_mappings: HashMap<Button, String>,
+    pub axis_mappings: HashMap<Axis, String>,
 }
 
 impl ControllerDebugUI {
@@ -67,6 +69,84 @@ impl ControllerDebugUI {
             input_history: Vec::new(),
             max_history_size: 100,
             steam_input_data: None,
+        }
+    }
+
+    fn get_button_display_name(button: &Button) -> &'static str {
+        match button {
+            Button::South => "A (South)",
+            Button::East => "B (East)", 
+            Button::North => "Y (North)",
+            Button::West => "X (West)",
+            Button::LeftTrigger => "LT (LeftTrigger)",
+            Button::LeftTrigger2 => "LT2 (LeftTrigger2)",
+            Button::RightTrigger => "RT (RightTrigger)",
+            Button::RightTrigger2 => "RT2 (RightTrigger2)",
+            Button::Select => "Select/View",
+            Button::Start => "Start/Menu",
+            Button::Mode => "Guide/Steam",
+            Button::LeftThumb => "LSB (LeftThumb)",
+            Button::RightThumb => "RSB (RightThumb)",
+            Button::DPadUp => "D-Pad Up",
+            Button::DPadDown => "D-Pad Down",
+            Button::DPadLeft => "D-Pad Left",
+            Button::DPadRight => "D-Pad Right",
+            Button::Unknown => "Unknown",
+            _ => "Other",
+        }
+    }
+
+    fn get_axis_display_name(axis: &Axis) -> &'static str {
+        match axis {
+            Axis::LeftStickX => "Left Stick X",
+            Axis::LeftStickY => "Left Stick Y",
+            Axis::LeftZ => "Left Z (L2)",
+            Axis::RightStickX => "Right Stick X",
+            Axis::RightStickY => "Right Stick Y",
+            Axis::RightZ => "Right Z (R2)",
+            Axis::DPadX => "D-Pad X",
+            Axis::DPadY => "D-Pad Y",
+            Axis::Unknown => "Unknown",
+            _ => "Other",
+        }
+    }
+
+    fn get_button_name(button: Button) -> &'static str {
+        match button {
+            Button::South => "A (South)",
+            Button::East => "B (East)", 
+            Button::North => "Y (North)",
+            Button::West => "X (West)",
+            Button::LeftTrigger => "LB (LeftTrigger)",
+            Button::LeftTrigger2 => "LT (LeftTrigger2)",
+            Button::RightTrigger => "RB (RightTrigger)",
+            Button::RightTrigger2 => "RT (RightTrigger2)",
+            Button::Select => "Select/View",
+            Button::Start => "Start/Menu",
+            Button::Mode => "Guide/Steam",
+            Button::LeftThumb => "LSB (LeftThumb)",
+            Button::RightThumb => "RSB (RightThumb)",
+            Button::DPadUp => "D-Pad Up",
+            Button::DPadDown => "D-Pad Down",
+            Button::DPadLeft => "D-Pad Left",
+            Button::DPadRight => "D-Pad Right",
+            Button::Unknown => "Unknown",
+            _ => "Other",
+        }
+    }
+
+    fn get_axis_name(axis: Axis) -> &'static str {
+        match axis {
+            Axis::LeftStickX => "Left Stick X",
+            Axis::LeftStickY => "Left Stick Y",
+            Axis::LeftZ => "LT Axis (LeftZ)",
+            Axis::RightStickX => "Right Stick X",
+            Axis::RightStickY => "Right Stick Y",
+            Axis::RightZ => "RT Axis (RightZ)",
+            Axis::DPadX => "D-Pad X",
+            Axis::DPadY => "D-Pad Y",
+            Axis::Unknown => "Unknown",
+            _ => "Other",
         }
     }
 
@@ -117,12 +197,17 @@ impl ControllerDebugUI {
             analog_actions: steam_input.get_analog_actions(),
             controller_count: steam_input.get_controller_count(),
             connected_controllers: steam_input.get_connected_controllers(),
+            button_mappings: steam_input.get_button_mappings(),
+            axis_mappings: steam_input.get_axis_mappings(),
         });
     }
 
     fn add_to_history(&mut self, message: String) {
         self.input_history.push(format!("[{}] {}", 
-            chrono::Utc::now().format("%H:%M:%S%.3f"), 
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(), 
             message));
         
         if self.input_history.len() > self.max_history_size {
@@ -180,7 +265,8 @@ impl ControllerDebugUI {
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, &format!("{:?}: {}", button, pressed));
+                                let button_name = Self::get_button_display_name(button);
+                                ui.text_colored(color, &format!("{}: {}", button_name, pressed));
                             }
                             ui.unindent();
                             
@@ -192,7 +278,8 @@ impl ControllerDebugUI {
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, &format!("{:?}: {:.3}", axis, value));
+                                let axis_name = Self::get_axis_display_name(axis);
+                                ui.text_colored(color, &format!("{}: {:.3}", axis_name, value));
                             }
                             ui.unindent();
                         }
@@ -216,13 +303,81 @@ impl ControllerDebugUI {
                         }
                         
                         if ui.collapsing_header("Digital Actions", TreeNodeFlags::empty()) {
+                            ui.text("Current Active Actions:");
+                            ui.separator();
+                            
+                            // Group actions by type for better display
+                            let mut face_buttons = Vec::new();
+                            let mut shoulder_buttons = Vec::new();
+                            let mut trigger_buttons = Vec::new();
+                            let mut stick_buttons = Vec::new();
+                            let mut dpad_buttons = Vec::new();
+                            let mut menu_buttons = Vec::new();
+                            
                             for (action, &active) in &steam_data.digital_actions {
-                                let color = if active {
-                                    [0.0, 1.0, 0.0, 1.0]
-                                } else {
-                                    [0.7, 0.7, 0.7, 1.0]
-                                };
-                                ui.text_colored(color, &format!("{}: {}", action, active));
+                                if action.contains("A (South)") || action.contains("B (East)") || 
+                                   action.contains("X (West)") || action.contains("Y (North)") {
+                                    face_buttons.push((action, active));
+                                } else if action.contains("LB") || action.contains("RB") {
+                                    shoulder_buttons.push((action, active));
+                                } else if action.contains("LT") || action.contains("RT") {
+                                    trigger_buttons.push((action, active));
+                                } else if action.contains("LSB") || action.contains("RSB") {
+                                    stick_buttons.push((action, active));
+                                } else if action.contains("D-Pad") {
+                                    dpad_buttons.push((action, active));
+                                } else if action.contains("Start") || action.contains("Select") {
+                                    menu_buttons.push((action, active));
+                                }
+                            }
+                            
+                            // Display grouped actions
+                            if !face_buttons.is_empty() {
+                                ui.text("Face Buttons:");
+                                for (action, active) in face_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
+                            }
+                            
+                            if !shoulder_buttons.is_empty() {
+                                ui.text("Shoulder Buttons:");
+                                for (action, active) in shoulder_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
+                            }
+                            
+                            if !trigger_buttons.is_empty() {
+                                ui.text("Triggers:");
+                                for (action, active) in trigger_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
+                            }
+                            
+                            if !stick_buttons.is_empty() {
+                                ui.text("Stick Buttons:");
+                                for (action, active) in stick_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
+                            }
+                            
+                            if !dpad_buttons.is_empty() {
+                                ui.text("D-Pad:");
+                                for (action, active) in dpad_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
+                            }
+                            
+                            if !menu_buttons.is_empty() {
+                                ui.text("Menu Buttons:");
+                                for (action, active) in menu_buttons {
+                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
+                                    ui.text_colored(color, &format!("  {}: {}", action, active));
+                                }
                             }
                         }
                         
@@ -247,31 +402,40 @@ impl ControllerDebugUI {
         // Controller mapping display
         if self.show_controller_mapping {
             ui.window("Controller Mapping")
-                .size([400.0, 300.0], Condition::FirstUseEver)
+                .size([500.0, 400.0], Condition::FirstUseEver)
                 .build(|| {
-                    ui.text("Button Mapping:");
+                    ui.text("Steam Input Button Mappings:");
                     ui.separator();
                     
-                    let mappings = [
-                        ("A/Cross", "Jump/Confirm"),
-                        ("B/Circle", "Back/Cancel"),
-                        ("X/Square", "Reload/Interact"),
-                        ("Y/Triangle", "Menu/Map"),
-                        ("Left Bumper", "Aim/Block"),
-                        ("Right Bumper", "Shoot/Attack"),
-                        ("Left Trigger", "Aim Down Sights"),
-                        ("Right Trigger", "Fire"),
-                        ("D-Pad", "Quick Actions"),
-                        ("Left Stick", "Movement"),
-                        ("Right Stick", "Camera/Look"),
-                        ("Left Stick Click", "Sprint/Run"),
-                        ("Right Stick Click", "Melee/Crouch"),
-                        ("Start/Options", "Pause Menu"),
-                        ("Back/Share", "Map/Inventory"),
+                    if let Some(ref steam_data) = self.steam_input_data {
+                        ui.text("Digital Actions (Button -> Action):");
+                        for (button, action) in &steam_data.button_mappings {
+                            let button_name = Self::get_button_display_name(button);
+                            ui.text(&format!("{} -> {}", button_name, action));
+                        }
+                        
+                        ui.separator();
+                        ui.text("Analog Actions (Axis -> Action):");
+                        for (axis, action) in &steam_data.axis_mappings {
+                            let axis_name = Self::get_axis_display_name(axis);
+                            ui.text(&format!("{} -> {}", axis_name, action));
+                        }
+                    } else {
+                        ui.text("No Steam Input data available");
+                    }
+                    
+                    ui.separator();
+                    ui.text("Steam Deck Specific Controls:");
+                    let steam_deck_mappings = [
+                        ("L4/L5 (Back Paddles)", "Custom Actions"),
+                        ("R4/R5 (Back Paddles)", "Custom Actions"),
+                        ("Left Trackpad", "Mouse/Touch Input"),
+                        ("Right Trackpad", "Mouse/Touch Input"),
+                        ("Gyroscope", "Motion Controls"),
                     ];
                     
-                    for (button, action) in mappings {
-                        ui.text(&format!("{}: {}", button, action));
+                    for (control, action) in steam_deck_mappings {
+                        ui.text(&format!("{}: {}", control, action));
                     }
                 });
         }

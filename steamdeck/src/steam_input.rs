@@ -1,12 +1,16 @@
 use anyhow::Result;
 use std::collections::HashMap;
+use gilrs::{GamepadId, Button, Axis};
 
 pub struct SteamInputManager {
     initialized: bool,
     digital_actions: HashMap<String, bool>,
     analog_actions: HashMap<String, (f32, f32)>,
-    controller_handles: Vec<u64>,
+    controller_handles: Vec<GamepadId>,
     action_sets: Vec<u64>,
+    // Map gilrs buttons/axes to Steam Input actions
+    button_mappings: HashMap<Button, String>,
+    axis_mappings: HashMap<Axis, String>,
 }
 
 impl SteamInputManager {
@@ -17,78 +21,142 @@ impl SteamInputManager {
             analog_actions: HashMap::new(),
             controller_handles: Vec::new(),
             action_sets: Vec::new(),
+            button_mappings: HashMap::new(),
+            axis_mappings: HashMap::new(),
         };
 
-        // Try to initialize Steam Input
         manager.initialize()?;
-        
         Ok(manager)
     }
 
     fn initialize(&mut self) -> Result<()> {
-        // In a real implementation, this would initialize the Steam Input API
-        // For now, we'll simulate initialization and provide mock data
-        
-        // Mock Steam Input initialization
         self.initialized = true;
         
-        // Setup mock digital actions
-        self.digital_actions.insert("jump".to_string(), false);
-        self.digital_actions.insert("fire".to_string(), false);
-        self.digital_actions.insert("reload".to_string(), false);
-        self.digital_actions.insert("menu".to_string(), false);
-        self.digital_actions.insert("use".to_string(), false);
-        self.digital_actions.insert("crouch".to_string(), false);
-        self.digital_actions.insert("sprint".to_string(), false);
+        // Initialize digital actions with button names, IDs, and action descriptions
+        self.digital_actions.insert("A (South) [ID: 0] - Jump".to_string(), false);
+        self.digital_actions.insert("B (East) [ID: 1] - Fire".to_string(), false);
+        self.digital_actions.insert("X (West) [ID: 2] - Reload".to_string(), false);
+        self.digital_actions.insert("Y (North) [ID: 3] - Menu".to_string(), false);
+        self.digital_actions.insert("LB [ID: 4] - Use".to_string(), false);
+        self.digital_actions.insert("RB [ID: 5] - Sprint".to_string(), false);
+        self.digital_actions.insert("LT [ID: 6] - Aim".to_string(), false);
+        self.digital_actions.insert("RT [ID: 7] - Fire".to_string(), false);
+        self.digital_actions.insert("LSB [ID: 8] - Sprint".to_string(), false);
+        self.digital_actions.insert("RSB [ID: 9] - Crouch".to_string(), false);
+        self.digital_actions.insert("Start [ID: 10] - Menu".to_string(), false);
+        self.digital_actions.insert("Select [ID: 11] - Map".to_string(), false);
+        self.digital_actions.insert("D-Pad Up [ID: 12] - Quick Action 1".to_string(), false);
+        self.digital_actions.insert("D-Pad Down [ID: 13] - Quick Action 2".to_string(), false);
+        self.digital_actions.insert("D-Pad Left [ID: 14] - Quick Action 3".to_string(), false);
+        self.digital_actions.insert("D-Pad Right [ID: 15] - Quick Action 4".to_string(), false);
         
-        // Setup mock analog actions
-        self.analog_actions.insert("move".to_string(), (0.0, 0.0));
-        self.analog_actions.insert("look".to_string(), (0.0, 0.0));
-        self.analog_actions.insert("aim".to_string(), (0.0, 0.0));
+        // Initialize analog actions with proper names (all start at 0,0)
+        self.analog_actions.insert("Left Stick - Move".to_string(), (0.0, 0.0));
+        self.analog_actions.insert("Right Stick - Look".to_string(), (0.0, 0.0));
+        self.analog_actions.insert("Triggers - Aim/Fire".to_string(), (0.0, 0.0));
         
-        // Mock controller handles
-        self.controller_handles.push(1);
+        // Set up button mappings (map gamepad buttons to Steam Input action names)
+        self.button_mappings.insert(Button::South, "A (South) [ID: 0] - Jump".to_string());
+        self.button_mappings.insert(Button::East, "B (East) [ID: 1] - Fire".to_string());
+        self.button_mappings.insert(Button::West, "X (West) [ID: 2] - Reload".to_string());
+        self.button_mappings.insert(Button::North, "Y (North) [ID: 3] - Menu".to_string());
+        self.button_mappings.insert(Button::LeftTrigger, "LB [ID: 4] - Use".to_string());
+        self.button_mappings.insert(Button::RightTrigger, "RB [ID: 5] - Sprint".to_string());
+        self.button_mappings.insert(Button::LeftTrigger2, "LT [ID: 6] - Aim".to_string());
+        self.button_mappings.insert(Button::RightTrigger2, "RT [ID: 7] - Fire".to_string());
+        self.button_mappings.insert(Button::LeftThumb, "LSB [ID: 8] - Sprint".to_string());
+        self.button_mappings.insert(Button::RightThumb, "RSB [ID: 9] - Crouch".to_string());
+        self.button_mappings.insert(Button::Start, "Start [ID: 10] - Menu".to_string());
+        self.button_mappings.insert(Button::Select, "Select [ID: 11] - Map".to_string());
+        self.button_mappings.insert(Button::DPadUp, "D-Pad Up [ID: 12] - Quick Action 1".to_string());
+        self.button_mappings.insert(Button::DPadDown, "D-Pad Down [ID: 13] - Quick Action 2".to_string());
+        self.button_mappings.insert(Button::DPadLeft, "D-Pad Left [ID: 14] - Quick Action 3".to_string());
+        self.button_mappings.insert(Button::DPadRight, "D-Pad Right [ID: 15] - Quick Action 4".to_string());
         
-        log::info!("Steam Input initialized (mock)");
+        // Set up axis mappings
+        self.axis_mappings.insert(Axis::LeftStickX, "Left Stick - Move".to_string());
+        self.axis_mappings.insert(Axis::LeftStickY, "Left Stick - Move".to_string());
+        self.axis_mappings.insert(Axis::RightStickX, "Right Stick - Look".to_string());
+        self.axis_mappings.insert(Axis::RightStickY, "Right Stick - Look".to_string());
+        self.axis_mappings.insert(Axis::LeftZ, "Triggers - Aim/Fire".to_string());
+        self.axis_mappings.insert(Axis::RightZ, "Triggers - Aim/Fire".to_string());
+        
+        log::info!("Steam Input initialized with real controller mappings");
         Ok(())
     }
 
     pub fn update(&mut self) {
+        // This method is now called from the main loop, but the actual updates
+        // happen via the update_from_controller_input method
+    }
+
+    // New method to update Steam Input based on real controller input
+    pub fn update_from_controller_input(&mut self, controller_id: GamepadId, button: Option<(Button, bool)>, axis: Option<(Axis, f32)>) {
         if !self.initialized {
             return;
         }
 
-        // In a real implementation, this would call Steam Input API to update controller state
-        // For now, we'll simulate some input changes for demonstration
-        
-        // Mock some random input changes for demonstration
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        
-        // Simulate some button presses based on time
-        if time % 5 == 0 {
-            self.digital_actions.insert("jump".to_string(), true);
-        } else {
-            self.digital_actions.insert("jump".to_string(), false);
+        // Add controller to our list if not already present
+        if !self.controller_handles.contains(&controller_id) {
+            self.controller_handles.push(controller_id);
         }
-        
-        if time % 7 == 0 {
-            self.digital_actions.insert("fire".to_string(), true);
-        } else {
-            self.digital_actions.insert("fire".to_string(), false);
+
+        // Handle button input
+        if let Some((btn, pressed)) = button {
+            if let Some(action_name) = self.button_mappings.get(&btn) {
+                self.digital_actions.insert(action_name.clone(), pressed);
+                log::debug!("Button {:?} -> Action '{}': {}", btn, action_name, pressed);
+            }
         }
+
+        // Handle axis input
+        if let Some((ax, value)) = axis {
+            if let Some(action_name) = self.axis_mappings.get(&ax) {
+                let current = self.analog_actions.get(action_name).copied().unwrap_or((0.0, 0.0));
+                
+                match ax {
+                    Axis::LeftStickX | Axis::RightStickX => {
+                        // X axis for sticks
+                        self.analog_actions.insert(action_name.clone(), (value, current.1));
+                    }
+                    Axis::LeftStickY | Axis::RightStickY => {
+                        // Y axis for sticks (invert for typical game controls)
+                        self.analog_actions.insert(action_name.clone(), (current.0, -value));
+                    }
+                    Axis::LeftZ => {
+                        // Left trigger (L2) - store as X component
+                        self.analog_actions.insert(action_name.clone(), (value, current.1));
+                    }
+                    Axis::RightZ => {
+                        // Right trigger (R2) - store as Y component
+                        self.analog_actions.insert(action_name.clone(), (current.0, value));
+                    }
+                    _ => {
+                        // Other axes - treat as X component
+                        self.analog_actions.insert(action_name.clone(), (value, current.1));
+                    }
+                }
+                log::debug!("Axis {:?} -> Action '{}': {:.3}", ax, action_name, value);
+            }
+        }
+    }
+
+    pub fn remove_controller(&mut self, controller_id: GamepadId) {
+        self.controller_handles.retain(|&id| id != controller_id);
         
-        // Simulate analog stick movement
-        let t = time as f32 * 0.1;
-        self.analog_actions.insert("move".to_string(), (
-            (t.sin() * 0.5).clamp(-1.0, 1.0),
-            (t.cos() * 0.3).clamp(-1.0, 1.0)
-        ));
-        
-        self.analog_actions.insert("look".to_string(), (
-            ((t * 0.7).sin() * 0.8).clamp(-1.0, 1.0),
-            ((t * 0.5).cos() * 0.6).clamp(-1.0, 1.0)
-        ));
+        // Reset all actions if no controllers are connected
+        if self.controller_handles.is_empty() {
+            // Reset all digital actions to false
+            for (_, pressed) in self.digital_actions.iter_mut() {
+                *pressed = false;
+            }
+            // Reset all analog actions to (0,0)
+            for (_, (x, y)) in self.analog_actions.iter_mut() {
+                *x = 0.0;
+                *y = 0.0;
+            }
+            log::info!("All controllers disconnected - resetting all actions");
+        }
     }
 
     pub fn get_digital_actions(&self) -> HashMap<String, bool> {
@@ -105,8 +173,8 @@ impl SteamInputManager {
 
     pub fn get_connected_controllers(&self) -> Vec<String> {
         let mut controllers = Vec::new();
-        for (i, _handle) in self.controller_handles.iter().enumerate() {
-            controllers.push(format!("Steam Controller {}", i + 1));
+        for (i, &controller_id) in self.controller_handles.iter().enumerate() {
+            controllers.push(format!("Controller {} (ID: {})", i + 1, controller_id));
         }
         
         // Add Steam Deck controller if we detect it
@@ -119,105 +187,47 @@ impl SteamInputManager {
 
     fn is_steam_deck(&self) -> bool {
         // Check if we're running on Steam Deck
-        // In a real implementation, this would check system information
         std::env::var("SteamDeck").is_ok() || 
         std::env::var("STEAM_DECK").is_ok() ||
         self.check_steam_deck_hardware()
     }
 
     fn check_steam_deck_hardware(&self) -> bool {
-        // Mock Steam Deck detection
-        // In a real implementation, this would check hardware identifiers
-        false
+        // Simple check for Steam Deck - look for specific hardware indicators
+        // This is a basic implementation, you could make it more sophisticated
+        if let Ok(hostname) = std::env::var("HOSTNAME") {
+            hostname.to_lowercase().contains("steamdeck")
+        } else {
+            false
+        }
     }
 
     pub fn shutdown(&mut self) {
         if self.initialized {
-            // In a real implementation, this would shutdown Steam Input
             self.initialized = false;
             log::info!("Steam Input shutdown");
         }
+    }
+
+    pub fn get_button_mappings(&self) -> HashMap<Button, String> {
+        self.button_mappings.clone()
+    }
+
+    pub fn get_axis_mappings(&self) -> HashMap<Axis, String> {
+        self.axis_mappings.clone()
+    }
+
+    pub fn get_action_for_button(&self, button: Button) -> Option<String> {
+        self.button_mappings.get(&button).cloned()
+    }
+
+    pub fn get_action_for_axis(&self, axis: Axis) -> Option<String> {
+        self.axis_mappings.get(&axis).cloned()
     }
 }
 
 impl Drop for SteamInputManager {
     fn drop(&mut self) {
         self.shutdown();
-    }
-}
-
-// Steam Input Action Types
-#[derive(Debug, Clone)]
-pub enum SteamInputActionType {
-    Digital,
-    Analog,
-}
-
-#[derive(Debug, Clone)]
-pub struct SteamInputAction {
-    pub name: String,
-    pub action_type: SteamInputActionType,
-    pub handle: u64,
-}
-
-// Steam Input Controller Info
-#[derive(Debug, Clone)]
-pub struct SteamControllerInfo {
-    pub handle: u64,
-    pub controller_type: String,
-    pub product_name: String,
-    pub serial_number: String,
-    pub is_wireless: bool,
-    pub is_steam_deck: bool,
-}
-
-// Additional Steam Input utilities
-impl SteamInputManager {
-    pub fn get_controller_info(&self, handle: u64) -> Option<SteamControllerInfo> {
-        if self.controller_handles.contains(&handle) {
-            Some(SteamControllerInfo {
-                handle,
-                controller_type: "Steam Controller".to_string(),
-                product_name: "Valve Steam Controller".to_string(),
-                serial_number: format!("SC{:08X}", handle),
-                is_wireless: true,
-                is_steam_deck: self.is_steam_deck(),
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn get_all_controller_info(&self) -> Vec<SteamControllerInfo> {
-        self.controller_handles.iter()
-            .filter_map(|&handle| self.get_controller_info(handle))
-            .collect()
-    }
-
-    pub fn vibrate_controller(&self, handle: u64, left_motor: u16, right_motor: u16) {
-        // In a real implementation, this would send vibration commands
-        log::info!("Vibrating controller {}: left={}, right={}", handle, left_motor, right_motor);
-    }
-
-    pub fn get_digital_action_data(&self, action_name: &str) -> Option<bool> {
-        self.digital_actions.get(action_name).copied()
-    }
-
-    pub fn get_analog_action_data(&self, action_name: &str) -> Option<(f32, f32)> {
-        self.analog_actions.get(action_name).copied()
-    }
-
-    pub fn is_action_set_active(&self, action_set_handle: u64) -> bool {
-        self.action_sets.contains(&action_set_handle)
-    }
-
-    pub fn activate_action_set(&mut self, action_set_handle: u64) {
-        if !self.action_sets.contains(&action_set_handle) {
-            self.action_sets.push(action_set_handle);
-        }
-    }
-
-    pub fn deactivate_action_set(&mut self, action_set_handle: u64) {
-        self.action_sets.retain(|&x| x != action_set_handle);
     }
 }
