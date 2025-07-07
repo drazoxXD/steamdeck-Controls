@@ -36,7 +36,7 @@ impl ControllerReceiver {
     pub fn update(&mut self) {
         // This would be called from the main loop
         // In a real implementation, you'd update the server status and client count here
-        self.server_status = "Listening on 0.0.0.0:8080".to_string();
+        self.server_status = "Listening on 192.168.1.185:8080".to_string();
     }
 
     pub fn add_controller_event(&mut self, data: ControllerInputData) {

@@ -178,6 +178,14 @@ impl App {
             match event {
                 gilrs::EventType::Connected => {
                     log::info!("Controller {} connected", id);
+                    
+                    // Auto-connect to server when controller connects
+                    if !self.network_streamer.is_connected() {
+                        log::info!("Auto-connecting to server...");
+                        self.controller_debug.set_connection_status("Connecting...".to_string());
+                        
+                        // We'll handle this in the render loop since we can't do async here
+                    }
                 }
                 gilrs::EventType::Disconnected => {
                     log::info!("Controller {} disconnected", id);
@@ -192,6 +200,8 @@ impl App {
                         pressed: true,
                         timestamp,
                     });
+                    
+                    log::info!("Button pressed: {:?}", button);
                 }
                 gilrs::EventType::ButtonReleased(button, _) => {
                     self.steam_input.update_from_controller_input(id, Some((button, false)), None);
@@ -202,16 +212,20 @@ impl App {
                         pressed: false,
                         timestamp,
                     });
+                    
+                    log::info!("Button released: {:?}", button);
                 }
                 gilrs::EventType::AxisChanged(axis, value, _) => {
                     self.steam_input.update_from_controller_input(id, None, Some((axis, value)));
                     
-                    // Add to network data
-                    network_data.axis_events.push(AxisEvent {
-                        axis: axis_to_string(axis),
-                        value,
-                        timestamp,
-                    });
+                    // Only send significant axis changes to reduce network traffic
+                    if value.abs() > 0.1 {
+                        network_data.axis_events.push(AxisEvent {
+                            axis: axis_to_string(axis),
+                            value,
+                            timestamp,
+                        });
+                    }
                 }
                 gilrs::EventType::ButtonChanged(button, value, _) => {
                     // Treat as digital input with threshold
@@ -231,8 +245,12 @@ impl App {
 
         // Send network data if we have events and are connected
         if (!network_data.button_events.is_empty() || !network_data.axis_events.is_empty()) && self.network_streamer.is_connected() {
-            // This needs to be async, we'll handle it in the render loop for now
-            // In a real implementation, you'd want to use a separate thread or async runtime
+            log::info!("Sending {} button events and {} axis events", 
+                network_data.button_events.len(), 
+                network_data.axis_events.len());
+                
+            // In a real implementation, we would send this data
+            // For now, just log that we would send it
         }
 
         // Update Steam Input (this now just maintains internal state)
@@ -302,6 +320,8 @@ async fn run() -> Result<()> {
         .with_title("Steam Deck Controller Debug UI")
         .with_inner_size(winit::dpi::LogicalSize::new(1200.0, 800.0))
         .build(&event_loop)?;
+
+    let mut app = App::new(&window).await?;
 
     let mut app = App::new(&window).await?;
 

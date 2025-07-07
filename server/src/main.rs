@@ -14,6 +14,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
 
 mod controller_receiver;
 use controller_receiver::ControllerReceiver;
@@ -51,10 +52,11 @@ pub struct App {
     renderer: Renderer,
     controller_receiver: ControllerReceiver,
     last_cursor: Option<imgui::MouseCursor>,
+    event_receiver: tokio::sync::mpsc::Receiver<ControllerInputData>,
 }
 
 impl App {
-    async fn new(window: &Window) -> Result<Self> {
+    async fn new(window: &Window, event_receiver: tokio::sync::mpsc::Receiver<ControllerInputData>) -> Result<Self> {
         let size = window.inner_size();
         
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -122,6 +124,7 @@ impl App {
             renderer,
             controller_receiver,
             last_cursor: None,
+            event_receiver,
         })
     }
 
@@ -170,6 +173,11 @@ impl App {
     }
 
     fn update(&mut self) {
+        // Check for new controller events from WebSocket
+        while let Ok(controller_data) = self.event_receiver.try_recv() {
+            self.controller_receiver.add_controller_event(controller_data);
+        }
+        
         self.controller_receiver.update();
     }
 
@@ -228,17 +236,20 @@ impl App {
 async fn run() -> Result<()> {
     env_logger::init();
     
+    // Create channel for communication between WebSocket and UI
+    let (tx, rx) = tokio::sync::mpsc::channel::<ControllerInputData>(100);
+    
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Steam Deck Controller Server")
         .with_inner_size(winit::dpi::LogicalSize::new(1200.0, 800.0))
         .build(&event_loop)?;
 
-    let mut app = App::new(&window).await?;
+    let mut app = App::new(&window, rx).await?;
 
-    // Start the WebSocket server
-    let server_handle = tokio::spawn(async {
-        start_websocket_server().await
+    // Start the WebSocket server with the sender
+    let server_handle = tokio::spawn(async move {
+        start_websocket_server(tx).await
     });
 
     event_loop.run(move |event, _, control_flow| {
@@ -277,15 +288,16 @@ async fn run() -> Result<()> {
     });
 }
 
-async fn start_websocket_server() -> Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    log::info!("WebSocket server listening on 0.0.0.0:8080");
+async fn start_websocket_server(event_sender: tokio::sync::mpsc::Sender<ControllerInputData>) -> Result<()> {
+    let listener = TcpListener::bind("192.168.1.185:8080").await?;
+    log::info!("WebSocket server listening on 192.168.1.185:8080");
 
     while let Ok((stream, addr)) = listener.accept().await {
         log::info!("New connection from {}", addr);
         
+        let sender = event_sender.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream).await {
+            if let Err(e) = handle_connection(stream, sender).await {
                 log::error!("Error handling connection: {}", e);
             }
         });
@@ -294,7 +306,7 @@ async fn start_websocket_server() -> Result<()> {
     Ok(())
 }
 
-async fn handle_connection(stream: tokio::net::TcpStream) -> Result<()> {
+async fn handle_connection(stream: tokio::net::TcpStream, event_sender: tokio::sync::mpsc::Sender<ControllerInputData>) -> Result<()> {
     let ws_stream = accept_async(stream).await?;
     let (mut tx, mut rx) = ws_stream.split();
     
@@ -315,6 +327,7 @@ async fn handle_connection(stream: tokio::net::TcpStream) -> Result<()> {
                         0
                     };
                     
+                    // Print to console (as before)
                     for button_event in &controller_data.button_events {
                         println!("Button: {} - {} ({}ms delay)", 
                             button_event.button, 
@@ -327,6 +340,12 @@ async fn handle_connection(stream: tokio::net::TcpStream) -> Result<()> {
                             axis_event.axis, 
                             axis_event.value,
                             delay);
+                    }
+                    
+                    // Send to UI
+                    if let Err(e) = event_sender.send(controller_data).await {
+                        log::error!("Failed to send controller data to UI: {}", e);
+                        break;
                     }
                 }
             }

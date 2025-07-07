@@ -71,7 +71,7 @@ impl ControllerDebugUI {
             max_history_size: 100,
             steam_input_data: None,
             network_enabled: false,
-            server_ip: "192.168.1.100".to_string(),
+            server_ip: "192.168.1.185".to_string(),
             server_port: 8080,
             connection_status: "Disconnected".to_string(),
         }
@@ -397,5 +397,16 @@ impl ControllerDebugUI {
 
     pub fn set_network_enabled(&mut self, enabled: bool) {
         self.network_enabled = enabled;
+    }
+
+    pub fn should_connect_network(&self) -> bool {
+        // This would be set when the connect button is pressed
+        // For now, we'll implement a simple check
+        false
+    }
+
+    pub fn should_disconnect_network(&self) -> bool {
+        // This would be set when the disconnect button is pressed
+        false
     }
 }

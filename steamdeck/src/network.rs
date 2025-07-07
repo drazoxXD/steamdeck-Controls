@@ -2,10 +2,13 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use gilrs::{GamepadId, Button, Axis};
-use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use futures_util::{SinkExt, StreamExt};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use futures_util::{SinkExt, StreamExt};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{WebSocketStream, MaybeTlsStream};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ControllerInputData {
@@ -32,7 +35,7 @@ pub struct AxisEvent {
 pub struct NetworkStreamer {
     server_address: String,
     connected: bool,
-    tx: Option<futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>, Message>>,
+    websocket: Option<Arc<Mutex<WebSocketStream<MaybeTlsStream<TcpStream>>>>>,
 }
 
 impl NetworkStreamer {
@@ -40,41 +43,57 @@ impl NetworkStreamer {
         Self {
             server_address: String::new(),
             connected: false,
-            tx: None,
+            websocket: None,
         }
     }
 
     pub async fn connect(&mut self, server_ip: &str, port: i32) -> Result<()> {
-        let url = format!("ws://{}:{}", server_ip, port);
-        self.server_address = url.clone();
+        self.server_address = format!("{}:{}", server_ip, port);
+        let url = format!("ws://{}/controller", self.server_address);
         
-        let (ws_stream, _) = connect_async(&url).await?;
-        let (tx, _rx) = ws_stream.split();
+        log::info!("Attempting to connect to {}", url);
         
-        self.tx = Some(tx);
-        self.connected = true;
-        
-        log::info!("Connected to server at {}", url);
-        Ok(())
+        match connect_async(&url).await {
+            Ok((ws_stream, _)) => {
+                self.websocket = Some(Arc::new(Mutex::new(ws_stream)));
+                self.connected = true;
+                log::info!("Successfully connected to server");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to connect to server: {}", e);
+                self.connected = false;
+                Err(anyhow::anyhow!("Failed to connect: {}", e))
+            }
+        }
     }
 
-    pub async fn disconnect(&mut self) -> Result<()> {
-        if let Some(mut tx) = self.tx.take() {
-            tx.close().await?;
-        }
+    pub fn disconnect(&mut self) -> Result<()> {
         self.connected = false;
+        self.websocket = None;
         log::info!("Disconnected from server");
         Ok(())
     }
 
-    pub async fn send_controller_data(&mut self, data: ControllerInputData) -> Result<()> {
+    pub fn send_controller_data(&mut self, data: ControllerInputData) -> Result<()> {
         if !self.connected {
             return Ok(());
         }
 
-        if let Some(tx) = &mut self.tx {
-            let json = serde_json::to_string(&data)?;
-            tx.send(Message::Text(json)).await?;
+        if let Some(ref websocket) = self.websocket {
+            let ws = websocket.clone();
+            let json_data = serde_json::to_string(&data)?;
+            
+            // Use tokio::task::block_in_place to run async code in sync context
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().spawn(async move {
+                    if let Ok(mut ws_lock) = ws.try_lock() {
+                        if let Err(e) = ws_lock.send(Message::Text(json_data)).await {
+                            log::error!("Failed to send WebSocket message: {}", e);
+                        }
+                    }
+                });
+            });
         }
 
         Ok(())
