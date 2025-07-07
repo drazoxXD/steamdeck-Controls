@@ -142,10 +142,10 @@ impl ControllerDebugUI {
         });
 
         // Controller overview
-        Window::new("Controller Overview")
+        ui.window("Controller Overview")
             .size([400.0, 300.0], Condition::FirstUseEver)
-            .build(ui, || {
-                ui.text(format!("Connected Controllers: {}", self.controllers.len()));
+            .build(|| {
+                ui.text(&format!("Connected Controllers: {}", self.controllers.len()));
                 ui.separator();
                 
                 for (id, controller) in &self.controllers {
@@ -155,23 +155,23 @@ impl ControllerDebugUI {
                         [1.0, 0.0, 0.0, 1.0] // Red for disconnected
                     };
                     
-                    ui.text_colored(color, format!("Controller {}: {}", id, controller.name));
-                    ui.text(format!("  Last Activity: {:.2}s ago", 
+                    ui.text_colored(color, &format!("Controller {}: {}", id, controller.name));
+                    ui.text(&format!("  Last Activity: {:.2}s ago", 
                         controller.last_activity.elapsed().as_secs_f32()));
-                    ui.text(format!("  Buttons: {} pressed", 
+                    ui.text(&format!("  Buttons: {} pressed", 
                         controller.buttons.values().filter(|&&v| v).count()));
-                    ui.text(format!("  Axes: {} active", 
+                    ui.text(&format!("  Axes: {} active", 
                         controller.axes.values().filter(|&&v| v.abs() > 0.1).count()));
                 }
             });
 
         // Raw input display
         if self.show_raw_input {
-            Window::new("Raw Controller Input")
+            ui.window("Raw Controller Input")
                 .size([500.0, 400.0], Condition::FirstUseEver)
-                .build(ui, || {
+                .build(|| {
                     for (id, controller) in &self.controllers {
-                        if ui.collapsing_header(format!("Controller {} - {}", id, controller.name), TreeNodeFlags::empty()) {
+                        if ui.collapsing_header(&format!("Controller {} - {}", id, controller.name), TreeNodeFlags::empty()) {
                             ui.text("Buttons:");
                             ui.indent();
                             for (button, &pressed) in &controller.buttons {
@@ -180,7 +180,7 @@ impl ControllerDebugUI {
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, format!("{:?}: {}", button, pressed));
+                                ui.text_colored(color, &format!("{:?}: {}", button, pressed));
                             }
                             ui.unindent();
                             
@@ -192,13 +192,7 @@ impl ControllerDebugUI {
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, format!("{:?}: {:.3}", axis, value));
-                                
-                                // Visual bar for axis values
-                                let progress = (value + 1.0) / 2.0; // Convert from -1..1 to 0..1
-                                ui.progress_bar(progress)
-                                    .size([200.0, 0.0])
-                                    .overlay_text(format!("{:.3}", value));
+                                ui.text_colored(color, &format!("{:?}: {:.3}", axis, value));
                             }
                             ui.unindent();
                         }
@@ -208,31 +202,31 @@ impl ControllerDebugUI {
 
         // Steam Input display
         if self.show_steam_input {
-            Window::new("Steam Input")
+            ui.window("Steam Input")
                 .size([500.0, 400.0], Condition::FirstUseEver)
-                .build(ui, || {
+                .build(|| {
                     if let Some(ref steam_data) = self.steam_input_data {
-                        ui.text(format!("Steam Controllers: {}", steam_data.controller_count));
+                        ui.text(&format!("Steam Controllers: {}", steam_data.controller_count));
                         ui.separator();
                         
-                        if ui.collapsing_header("Connected Controllers", TreeNodeFlags::DefaultOpen) {
+                        if ui.collapsing_header("Connected Controllers", TreeNodeFlags::empty()) {
                             for controller in &steam_data.connected_controllers {
-                                ui.text(format!("• {}", controller));
+                                ui.text(&format!("• {}", controller));
                             }
                         }
                         
-                        if ui.collapsing_header("Digital Actions", TreeNodeFlags::DefaultOpen) {
+                        if ui.collapsing_header("Digital Actions", TreeNodeFlags::empty()) {
                             for (action, &active) in &steam_data.digital_actions {
                                 let color = if active {
                                     [0.0, 1.0, 0.0, 1.0]
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, format!("{}: {}", action, active));
+                                ui.text_colored(color, &format!("{}: {}", action, active));
                             }
                         }
                         
-                        if ui.collapsing_header("Analog Actions", TreeNodeFlags::DefaultOpen) {
+                        if ui.collapsing_header("Analog Actions", TreeNodeFlags::empty()) {
                             for (action, &(x, y)) in &steam_data.analog_actions {
                                 let magnitude = (x * x + y * y).sqrt();
                                 let color = if magnitude > 0.1 {
@@ -240,29 +234,7 @@ impl ControllerDebugUI {
                                 } else {
                                     [0.7, 0.7, 0.7, 1.0]
                                 };
-                                ui.text_colored(color, format!("{}: ({:.3}, {:.3})", action, x, y));
-                                
-                                // 2D visualization for analog sticks
-                                let draw_list = ui.get_window_draw_list();
-                                let canvas_pos = ui.cursor_screen_pos();
-                                let canvas_size = [100.0, 100.0];
-                                let center = [canvas_pos[0] + canvas_size[0] / 2.0, canvas_pos[1] + canvas_size[1] / 2.0];
-                                
-                                // Draw background circle
-                                draw_list.add_circle(center, 40.0, [0.3, 0.3, 0.3, 1.0])
-                                    .filled(true)
-                                    .build();
-                                
-                                // Draw stick position
-                                let stick_pos = [
-                                    center[0] + x * 35.0,
-                                    center[1] - y * 35.0, // Invert Y for screen coordinates
-                                ];
-                                draw_list.add_circle(stick_pos, 5.0, [1.0, 0.0, 0.0, 1.0])
-                                    .filled(true)
-                                    .build();
-                                
-                                ui.dummy(canvas_size);
+                                ui.text_colored(color, &format!("{}: ({:.3}, {:.3})", action, x, y));
                             }
                         }
                     } else {
@@ -274,9 +246,9 @@ impl ControllerDebugUI {
 
         // Controller mapping display
         if self.show_controller_mapping {
-            Window::new("Controller Mapping")
+            ui.window("Controller Mapping")
                 .size([400.0, 300.0], Condition::FirstUseEver)
-                .build(ui, || {
+                .build(|| {
                     ui.text("Button Mapping:");
                     ui.separator();
                     
@@ -299,21 +271,21 @@ impl ControllerDebugUI {
                     ];
                     
                     for (button, action) in mappings {
-                        ui.text(format!("{}: {}", button, action));
+                        ui.text(&format!("{}: {}", button, action));
                     }
                 });
         }
 
         // Input history
         if self.show_input_history {
-            Window::new("Input History")
+            ui.window("Input History")
                 .size([600.0, 300.0], Condition::FirstUseEver)
-                .build(ui, || {
+                .build(|| {
                     if ui.button("Clear History") {
                         self.input_history.clear();
                     }
                     ui.same_line();
-                    ui.text(format!("({}/{} entries)", self.input_history.len(), self.max_history_size));
+                    ui.text(&format!("({}/{} entries)", self.input_history.len(), self.max_history_size));
                     
                     ui.separator();
                     

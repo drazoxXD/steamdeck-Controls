@@ -1,11 +1,8 @@
 use anyhow::Result;
-use gilrs::{Gilrs, GamepadId, Event, EventType, Button, Axis};
-use imgui::*;
+use gilrs::{Gilrs, Event};
 use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use std::collections::HashMap;
-use std::time::Instant;
-use wgpu::{Device, Queue, Surface, SurfaceConfiguration, TextureFormat};
+use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::{
     event::{Event as WinitEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -39,9 +36,7 @@ impl App {
         
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::default(),
             dx12_shader_compiler: Default::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
         });
 
         let surface = unsafe { instance.create_surface(window) }?;
@@ -66,7 +61,7 @@ impl App {
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats.iter()
             .copied()
-            .find(|f| f.is_srgb())
+            .find(|f| f.describe().srgb)
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -120,15 +115,15 @@ impl App {
         }
     }
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        self.platform.handle_event(self.imgui.io_mut(), &event);
+    fn input(&mut self, event: &WindowEvent, window: &Window) -> bool {
+        self.platform.handle_event(self.imgui.io_mut(), window, &WinitEvent::WindowEvent { window_id: window.id(), event: event.clone() });
         false
     }
 
     fn update(&mut self) {
         // Poll controller events
         while let Some(Event { id, event, time }) = self.gilrs.next_event() {
-            self.controller_debug.handle_gilrs_event(id, event, time);
+            self.controller_debug.handle_gilrs_event(id, event, time.as_secs_f64());
         }
 
         // Update Steam Input
@@ -168,11 +163,10 @@ impl App {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
         });
 
-        self.renderer.render(ui.render(), &self.queue, &self.device, &mut render_pass)
+        let draw_data = ui.render();
+        self.renderer.render(&draw_data, &self.queue, &self.device, &mut render_pass)
             .expect("Rendering failed");
 
         drop(render_pass);
@@ -208,7 +202,7 @@ async fn run() -> Result<()> {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                if !app.input(event) {
+                if !app.input(event, &window) {
                     match event {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {

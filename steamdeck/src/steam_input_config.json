@@ -1,0 +1,54 @@
+{
+    "actions": [
+        {
+            "name": "jump",
+            "type": "digital"
+        },
+        {
+            "name": "fire",
+            "type": "digital"
+        },
+        {
+            "name": "reload",
+            "type": "digital"
+        },
+        {
+            "name": "menu",
+            "type": "digital"
+        },
+        {
+            "name": "use",
+            "type": "digital"
+        },
+        {
+            "name": "crouch",
+            "type": "digital"
+        },
+        {
+            "name": "sprint",
+            "type": "digital"
+        },
+        {
+            "name": "move",
+            "type": "analog"
+        },
+        {
+            "name": "look",
+            "type": "analog"
+        },
+        {
+            "name": "aim",
+            "type": "analog"
+        }
+    ],
+    "actionSets": [
+        {
+            "name": "gameplay",
+            "actions": ["jump", "fire", "reload", "move", "look", "crouch", "sprint", "use"]
+        },
+        {
+            "name": "menu",
+            "actions": ["menu", "move", "fire", "jump"]
+        }
+    ]
+}
