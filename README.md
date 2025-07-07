@@ -60,3 +60,20 @@ Turn your SteamDeck into a wireless Xbox 360 controller! This project sends butt
 This project is provided as-is and is not guaranteed to receive further development or feature updates.  
 **I am not required to develop this project further.**  
 Bug reports and pull requests are welcome, but please understand that ongoing support or new features may not be provided.
+
+---
+
+## ⚠️ Disclaimer
+
+This software is provided for educational and personal use only.
+
+- **I am not responsible if someone gains unauthorized access ("hacks") via the built-in WebSocket server.**  
+- Use at your own risk and always consider your network security.
+- If you are concerned about security, review the code and consider changing the default port or implementing your own security measures.
+
+---
+
+## 📄 License
+
+This project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](https://www.gnu.org/licenses/gpl-3.0.html).  
+You are free to use, modify, and distribute this software under the terms of the GPL-3.0 license.
