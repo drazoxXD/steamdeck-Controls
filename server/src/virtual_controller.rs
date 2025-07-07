@@ -103,15 +103,15 @@ impl VirtualController {
                 self.gamepad_state.thumb_lx = (value * 32767.0) as i16;
             }
             "Left Stick Y" => {
-                // Invert Y axis for Xbox controller
-                self.gamepad_state.thumb_ly = (-value * 32767.0) as i16;
+                // Don't invert Y axis - use raw value
+                self.gamepad_state.thumb_ly = (value * 32767.0) as i16;
             }
             "Right Stick X" => {
                 self.gamepad_state.thumb_rx = (value * 32767.0) as i16;
             }
             "Right Stick Y" => {
-                // Invert Y axis for Xbox controller
-                self.gamepad_state.thumb_ry = (-value * 32767.0) as i16;
+                // Don't invert Y axis - use raw value
+                self.gamepad_state.thumb_ry = (value * 32767.0) as i16;
             }
             "LT Axis" => {
                 self.gamepad_state.left_trigger = (value * 255.0) as u8;

@@ -31,6 +31,9 @@ pub struct App {
     gilrs: Gilrs,
     last_cursor: Option<imgui::MouseCursor>,
     network_streamer: NetworkStreamer,
+    pending_connect: Option<(String, i32)>,
+    pending_disconnect: bool,
+    last_mirror_time: std::time::Instant,
 }
 
 impl App {
@@ -50,16 +53,20 @@ impl App {
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             },
-        ).await.unwrap();
+        ).await.ok_or_else(|| anyhow::anyhow!("Failed to find suitable adapter"))?;
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
+                limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    wgpu::Limits::default()
+                },
             },
             None,
-        ).await.unwrap();
+        ).await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats.iter()
@@ -70,8 +77,8 @@ impl App {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: size.width.max(1),
+            height: size.height.max(1),
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -109,14 +116,16 @@ impl App {
             gilrs,
             last_cursor: None,
             network_streamer,
+            pending_connect: None,
+            pending_disconnect: false,
         })
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.config.width = new_size.width.max(1);
+            self.config.height = new_size.height.max(1);
             self.surface.configure(&self.device, &self.config);
         }
     }
@@ -158,6 +167,48 @@ impl App {
     }
 
     fn update(&mut self) {
+        // Handle pending network operations
+        if let Some((ip, port)) = self.pending_connect.take() {
+            let mut network_streamer = NetworkStreamer::new();
+            
+            // Use tokio::task::block_in_place to run async code in sync context
+            let connection_result = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(network_streamer.connect(&ip, port))
+            });
+            
+            match connection_result {
+                Ok(_) => {
+                    self.network_streamer = network_streamer;
+                    self.controller_debug.set_connection_status("Connected".to_string());
+                    self.controller_debug.set_network_enabled(true);
+                    log::info!("Successfully connected to server");
+                }
+                Err(e) => {
+                    self.controller_debug.set_connection_status("Connection Failed".to_string());
+                    self.controller_debug.set_network_enabled(false);
+                    log::error!("Failed to connect to server: {}", e);
+                }
+            }
+        }
+
+        if self.pending_disconnect {
+            self.pending_disconnect = false;
+            let _ = self.network_streamer.disconnect();
+            self.controller_debug.set_connection_status("Disconnected".to_string());
+            self.controller_debug.set_network_enabled(false);
+        }
+
+        // Check for UI-triggered network operations
+        if let Some((server_ip, server_port)) = self.controller_debug.should_connect_network() {
+            if !self.network_streamer.is_connected() && self.pending_connect.is_none() {
+                self.pending_connect = Some((server_ip, server_port));
+            }
+        }
+        
+        if self.controller_debug.should_disconnect_network() {
+            self.pending_disconnect = true;
+        }
+        
         // Poll controller events
         let mut network_data = ControllerInputData {
             timestamp: get_current_timestamp(),
@@ -249,8 +300,10 @@ impl App {
                 network_data.button_events.len(), 
                 network_data.axis_events.len());
                 
-            // In a real implementation, we would send this data
-            // For now, just log that we would send it
+            // Try to send the data
+            if let Err(e) = self.network_streamer.send_controller_data(network_data) {
+                log::error!("Failed to send network data: {}", e);
+            }
         }
 
         // Update Steam Input (this now just maintains internal state)
@@ -323,8 +376,6 @@ async fn run() -> Result<()> {
 
     let mut app = App::new(&window).await?;
 
-    let mut app = App::new(&window).await?;
-
     event_loop.run(move |event, _, control_flow| {
         match event {
             WinitEvent::WindowEvent {
@@ -362,5 +413,7 @@ async fn run() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    pollster::block_on(run())
+    // Use Tokio runtime instead of pollster
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(run())
 }

@@ -39,16 +39,21 @@ impl ControllerState {
 
 pub struct ControllerDebugUI {
     controllers: HashMap<GamepadId, ControllerState>,
+    show_raw_input: bool,
     show_steam_input: bool,
-    show_network_options: bool,
+    show_controller_mapping: bool,
+    show_input_history: bool,
     input_history: Vec<String>,
     max_history_size: usize,
     steam_input_data: Option<SteamInputData>,
-    // Network settings
+    // Network-related fields
+    connection_status: String,
     network_enabled: bool,
     server_ip: String,
-    server_port: i32,
-    connection_status: String,
+    server_port: String,
+    should_connect: bool,
+    should_disconnect: bool,
+    sync_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -57,101 +62,26 @@ pub struct SteamInputData {
     pub analog_actions: HashMap<String, (f32, f32)>,
     pub controller_count: usize,
     pub connected_controllers: Vec<String>,
-    pub button_mappings: HashMap<Button, String>,
-    pub axis_mappings: HashMap<Axis, String>,
 }
 
 impl ControllerDebugUI {
     pub fn new() -> Self {
         Self {
             controllers: HashMap::new(),
+            show_raw_input: true,
             show_steam_input: true,
-            show_network_options: true,
+            show_controller_mapping: true,
+            show_input_history: true,
             input_history: Vec::new(),
             max_history_size: 100,
             steam_input_data: None,
+            connection_status: "Disconnected".to_string(),
             network_enabled: false,
             server_ip: "192.168.1.185".to_string(),
-            server_port: 8080,
-            connection_status: "Disconnected".to_string(),
-        }
-    }
-
-    fn get_button_display_name(button: &Button) -> &'static str {
-        match button {
-            Button::South => "A (South)",
-            Button::East => "B (East)", 
-            Button::North => "Y (North)",
-            Button::West => "X (West)",
-            Button::LeftTrigger => "LT (LeftTrigger)",
-            Button::LeftTrigger2 => "LT2 (LeftTrigger2)",
-            Button::RightTrigger => "RT (RightTrigger)",
-            Button::RightTrigger2 => "RT2 (RightTrigger2)",
-            Button::Select => "Select/View",
-            Button::Start => "Start/Menu",
-            Button::Mode => "Guide/Steam",
-            Button::LeftThumb => "LSB (LeftThumb)",
-            Button::RightThumb => "RSB (RightThumb)",
-            Button::DPadUp => "D-Pad Up",
-            Button::DPadDown => "D-Pad Down",
-            Button::DPadLeft => "D-Pad Left",
-            Button::DPadRight => "D-Pad Right",
-            Button::Unknown => "Unknown",
-            _ => "Other",
-        }
-    }
-
-    fn get_axis_display_name(axis: &Axis) -> &'static str {
-        match axis {
-            Axis::LeftStickX => "Left Stick X",
-            Axis::LeftStickY => "Left Stick Y",
-            Axis::LeftZ => "Left Z (L2)",
-            Axis::RightStickX => "Right Stick X",
-            Axis::RightStickY => "Right Stick Y",
-            Axis::RightZ => "Right Z (R2)",
-            Axis::DPadX => "D-Pad X",
-            Axis::DPadY => "D-Pad Y",
-            Axis::Unknown => "Unknown",
-            _ => "Other",
-        }
-    }
-
-    fn get_button_name(button: Button) -> &'static str {
-        match button {
-            Button::South => "A (South)",
-            Button::East => "B (East)", 
-            Button::North => "Y (North)",
-            Button::West => "X (West)",
-            Button::LeftTrigger => "LB (LeftTrigger)",
-            Button::LeftTrigger2 => "LT (LeftTrigger2)",
-            Button::RightTrigger => "RB (RightTrigger)",
-            Button::RightTrigger2 => "RT (RightTrigger2)",
-            Button::Select => "Select/View",
-            Button::Start => "Start/Menu",
-            Button::Mode => "Guide/Steam",
-            Button::LeftThumb => "LSB (LeftThumb)",
-            Button::RightThumb => "RSB (RightThumb)",
-            Button::DPadUp => "D-Pad Up",
-            Button::DPadDown => "D-Pad Down",
-            Button::DPadLeft => "D-Pad Left",
-            Button::DPadRight => "D-Pad Right",
-            Button::Unknown => "Unknown",
-            _ => "Other",
-        }
-    }
-
-    fn get_axis_name(axis: Axis) -> &'static str {
-        match axis {
-            Axis::LeftStickX => "Left Stick X",
-            Axis::LeftStickY => "Left Stick Y",
-            Axis::LeftZ => "LT Axis (LeftZ)",
-            Axis::RightStickX => "Right Stick X",
-            Axis::RightStickY => "Right Stick Y",
-            Axis::RightZ => "RT Axis (RightZ)",
-            Axis::DPadX => "D-Pad X",
-            Axis::DPadY => "D-Pad Y",
-            Axis::Unknown => "Unknown",
-            _ => "Other",
+            server_port: "8080".to_string(),
+            should_connect: false,
+            should_disconnect: false,
+            mirroring_enabled: false,
         }
     }
 
@@ -202,17 +132,12 @@ impl ControllerDebugUI {
             analog_actions: steam_input.get_analog_actions(),
             controller_count: steam_input.get_controller_count(),
             connected_controllers: steam_input.get_connected_controllers(),
-            button_mappings: steam_input.get_button_mappings(),
-            axis_mappings: steam_input.get_axis_mappings(),
         });
     }
 
     fn add_to_history(&mut self, message: String) {
         self.input_history.push(format!("[{}] {}", 
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(), 
+            chrono::Utc::now().format("%H:%M:%S%.3f"), 
             message));
         
         if self.input_history.len() > self.max_history_size {
@@ -224,52 +149,68 @@ impl ControllerDebugUI {
         // Main menu bar
         ui.main_menu_bar(|| {
             ui.menu("View", || {
+                ui.checkbox("Raw Input", &mut self.show_raw_input);
                 ui.checkbox("Steam Input", &mut self.show_steam_input);
-                ui.checkbox("Network Options", &mut self.show_network_options);
+                ui.checkbox("Controller Mapping", &mut self.show_controller_mapping);
+                ui.checkbox("Input History", &mut self.show_input_history);
             });
         });
 
-        // Network Options
-        if self.show_network_options {
-            ui.window("Network Controller Streaming")
-                .size([400.0, 300.0], Condition::FirstUseEver)
-                .build(|| {
-                    ui.text("Stream controller input to PC over network");
-                    ui.separator();
-                    
-                    ui.text("Server Settings:");
-                    ui.input_text("Server IP", &mut self.server_ip).build();
-                    ui.input_int("Port", &mut self.server_port).build();
-                    
-                    ui.separator();
-                    
-                    if ui.button("Connect") && !self.network_enabled {
-                        self.network_enabled = true;
-                        self.connection_status = "Connecting...".to_string();
-                        // TODO: Implement network connection
-                    }
-                    
-                    ui.same_line();
-                    
-                    if ui.button("Disconnect") && self.network_enabled {
-                        self.network_enabled = false;
-                        self.connection_status = "Disconnected".to_string();
-                        // TODO: Implement network disconnection
-                    }
-                    
-                    ui.separator();
-                    
-                    let status_color = match self.connection_status.as_str() {
-                        "Connected" => [0.0, 1.0, 0.0, 1.0],
-                        "Connecting..." => [1.0, 1.0, 0.0, 1.0],
-                        _ => [1.0, 0.0, 0.0, 1.0],
+        // Controller overview
+        ui.window("Controller Overview")
+            .size([400.0, 300.0], Condition::FirstUseEver)
+            .build(|| {
+                ui.text(&format!("Connected Controllers: {}", self.controllers.len()));
+                ui.separator();
+                
+                for (id, controller) in &self.controllers {
+                    let color = if controller.connected {
+                        [0.0, 1.0, 0.0, 1.0] // Green for connected
+                    } else {
+                        [1.0, 0.0, 0.0, 1.0] // Red for disconnected
                     };
                     
-                    ui.text_colored(status_color, &format!("Status: {}", self.connection_status));
-                    
-                    if self.network_enabled {
-                        ui.text(&format!("Streaming to: {}:{}", self.server_ip, self.server_port));
-                        ui.text(&format!("Connected Controllers: {}", self.controllers.len()));
+                    ui.text_colored(color, &format!("Controller {}: {}", id, controller.name));
+                    ui.text(&format!("  Last Activity: {:.2}s ago", 
+                        controller.last_activity.elapsed().as_secs_f32()));
+                    ui.text(&format!("  Buttons: {} pressed", 
+                        controller.buttons.values().filter(|&&v| v).count()));
+                    ui.text(&format!("  Axes: {} active", 
+                        controller.axes.values().filter(|&&v| v.abs() > 0.1).count()));
+                }
+            });
+
+        // Raw input display
+        if self.show_raw_input {
+            ui.window("Raw Controller Input")
+                .size([500.0, 400.0], Condition::FirstUseEver)
+                .build(|| {
+                    for (id, controller) in &self.controllers {
+                        if ui.collapsing_header(&format!("Controller {} - {}", id, controller.name), TreeNodeFlags::empty()) {
+                            ui.text("Buttons:");
+                            ui.indent();
+                            for (button, &pressed) in &controller.buttons {
+                                let color = if pressed {
+                                    [0.0, 1.0, 0.0, 1.0]
+                                } else {
+                                    [0.7, 0.7, 0.7, 1.0]
+                                };
+                                ui.text_colored(color, &format!("{:?}: {}", button, pressed));
+                            }
+                            ui.unindent();
+                            
+                            ui.text("Axes:");
+                            ui.indent();
+                            for (axis, &value) in &controller.axes {
+                                let color = if value.abs() > 0.1 {
+                                    [1.0, 1.0, 0.0, 1.0]
+                                } else {
+                                    [0.7, 0.7, 0.7, 1.0]
+                                };
+                                ui.text_colored(color, &format!("{:?}: {:.3}", axis, value));
+                            }
+                            ui.unindent();
+                        }
                     }
                 });
         }
@@ -290,81 +231,13 @@ impl ControllerDebugUI {
                         }
                         
                         if ui.collapsing_header("Digital Actions", TreeNodeFlags::empty()) {
-                            ui.text("Current Active Actions:");
-                            ui.separator();
-                            
-                            // Group actions by type for better display
-                            let mut face_buttons = Vec::new();
-                            let mut shoulder_buttons = Vec::new();
-                            let mut trigger_buttons = Vec::new();
-                            let mut stick_buttons = Vec::new();
-                            let mut dpad_buttons = Vec::new();
-                            let mut menu_buttons = Vec::new();
-                            
                             for (action, &active) in &steam_data.digital_actions {
-                                if action.contains("A (South)") || action.contains("B (East)") || 
-                                   action.contains("X (West)") || action.contains("Y (North)") {
-                                    face_buttons.push((action, active));
-                                } else if action.contains("LB") || action.contains("RB") {
-                                    shoulder_buttons.push((action, active));
-                                } else if action.contains("LT") || action.contains("RT") {
-                                    trigger_buttons.push((action, active));
-                                } else if action.contains("LSB") || action.contains("RSB") {
-                                    stick_buttons.push((action, active));
-                                } else if action.contains("D-Pad") {
-                                    dpad_buttons.push((action, active));
-                                } else if action.contains("Start") || action.contains("Select") {
-                                    menu_buttons.push((action, active));
-                                }
-                            }
-                            
-                            // Display grouped actions
-                            if !face_buttons.is_empty() {
-                                ui.text("Face Buttons:");
-                                for (action, active) in face_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
-                            }
-                            
-                            if !shoulder_buttons.is_empty() {
-                                ui.text("Shoulder Buttons:");
-                                for (action, active) in shoulder_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
-                            }
-                            
-                            if !trigger_buttons.is_empty() {
-                                ui.text("Triggers:");
-                                for (action, active) in trigger_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
-                            }
-                            
-                            if !stick_buttons.is_empty() {
-                                ui.text("Stick Buttons:");
-                                for (action, active) in stick_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
-                            }
-                            
-                            if !dpad_buttons.is_empty() {
-                                ui.text("D-Pad:");
-                                for (action, active) in dpad_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
-                            }
-                            
-                            if !menu_buttons.is_empty() {
-                                ui.text("Menu Buttons:");
-                                for (action, active) in menu_buttons {
-                                    let color = if active { [0.0, 1.0, 0.0, 1.0] } else { [0.7, 0.7, 0.7, 1.0] };
-                                    ui.text_colored(color, &format!("  {}: {}", action, active));
-                                }
+                                let color = if active {
+                                    [0.0, 1.0, 0.0, 1.0]
+                                } else {
+                                    [0.7, 0.7, 0.7, 1.0]
+                                };
+                                ui.text_colored(color, &format!("{}: {}", action, active));
                             }
                         }
                         
@@ -385,12 +258,110 @@ impl ControllerDebugUI {
                     }
                 });
         }
+
+        // Controller mapping display
+        if self.show_controller_mapping {
+            ui.window("Controller Mapping")
+                .size([400.0, 300.0], Condition::FirstUseEver)
+                .build(|| {
+                    ui.text("Button Mapping:");
+                    ui.separator();
+                    
+                    let mappings = [
+                        ("A/Cross", "Jump/Confirm"),
+                        ("B/Circle", "Back/Cancel"),
+                        ("X/Square", "Reload/Interact"),
+                        ("Y/Triangle", "Menu/Map"),
+                        ("Left Bumper", "Aim/Block"),
+                        ("Right Bumper", "Shoot/Attack"),
+                        ("Left Trigger", "Aim Down Sights"),
+                        ("Right Trigger", "Fire"),
+                        ("D-Pad", "Quick Actions"),
+                        ("Left Stick", "Movement"),
+                        ("Right Stick", "Camera/Look"),
+                        ("Left Stick Click", "Sprint/Run"),
+                        ("Right Stick Click", "Melee/Crouch"),
+                        ("Start/Options", "Pause Menu"),
+                        ("Back/Share", "Map/Inventory"),
+                    ];
+                    
+                    for (button, action) in mappings {
+                        ui.text(&format!("{}: {}", button, action));
+                    }
+                });
+        }
+
+        // Input history
+        if self.show_input_history {
+            ui.window("Input History")
+                .size([600.0, 300.0], Condition::FirstUseEver)
+                .build(|| {
+                    if ui.button("Clear History") {
+                        self.input_history.clear();
+                    }
+                    ui.same_line();
+                    ui.text(&format!("({}/{} entries)", self.input_history.len(), self.max_history_size));
+                    
+                    ui.separator();
+                    
+                    ui.child_window("history_scroll")
+                        .size([0.0, 0.0])
+                        .build(|| {
+                            for entry in &self.input_history {
+                                ui.text(entry);
+                            }
+                        });
+                });
+        }
+
+        // Network settings
+        ui.window("Network Settings")
+            .size([400.0, 300.0], Condition::FirstUseEver)
+            .build(|| {
+                ui.text(&format!("Connection Status: {}", self.connection_status));
+                ui.separator();
+                
+                ui.input_text("Server IP", &mut self.server_ip).build();
+                ui.input_text("Server Port", &mut self.server_port).build();
+                
+                ui.separator();
+                
+                ui.checkbox("Enable Mirroring (Send all data every 1ms)", &mut self.mirroring_enabled);
+                if self.mirroring_enabled {
+                    ui.text_colored([1.0, 1.0, 0.0, 1.0], "⚠ High bandwidth mode - sends all controller data continuously");
+                }
+                
+                ui.separator();
+                
+                let can_connect = !self.network_enabled && !self.should_connect;
+                let can_disconnect = self.network_enabled && !self.should_disconnect;
+                
+                if ui.button("Connect") && can_connect {
+                    self.should_connect = true;
+                    self.connection_status = "Connecting...".to_string();
+                }
+                ui.same_line();
+                if ui.button("Disconnect") && can_disconnect {
+                    self.should_disconnect = true;
+                    self.connection_status = "Disconnecting...".to_string();
+                }
+                
+                ui.separator();
+                ui.text("Network Status:");
+                let status_color = if self.network_enabled {
+                    [0.0, 1.0, 0.0, 1.0] // Green for connected
+                } else {
+                    [1.0, 0.0, 0.0, 1.0] // Red for disconnected
+                };
+                ui.text_colored(status_color, if self.network_enabled { "Connected" } else { "Disconnected" });
+                
+                if self.network_enabled {
+                    ui.text(&format!("Connected to: {}:{}", self.server_ip, self.server_port));
+                }
+            });
     }
 
-    pub fn get_network_settings(&self) -> (bool, String, i32) {
-        (self.network_enabled, self.server_ip.clone(), self.server_port)
-    }
-
+    // Network-related methods
     pub fn set_connection_status(&mut self, status: String) {
         self.connection_status = status;
     }
@@ -399,14 +370,25 @@ impl ControllerDebugUI {
         self.network_enabled = enabled;
     }
 
-    pub fn should_connect_network(&self) -> bool {
-        // This would be set when the connect button is pressed
-        // For now, we'll implement a simple check
+    pub fn should_connect_network(&mut self) -> Option<(String, i32)> {
+        if self.should_connect {
+            self.should_connect = false;
+            if let Ok(port) = self.server_port.parse::<i32>() {
+                return Some((self.server_ip.clone(), port));
+            }
+        }
+        None
+    }
+
+    pub fn should_disconnect_network(&mut self) -> bool {
+        if self.should_disconnect {
+            self.should_disconnect = false;
+            return true;
+        }
         false
     }
 
-    pub fn should_disconnect_network(&self) -> bool {
-        // This would be set when the disconnect button is pressed
-        false
+    pub fn is_mirroring_enabled(&self) -> bool {
+        self.mirroring_enabled
     }
 }
