@@ -1,12 +1,8 @@
-name: Rust Release
+name: Rust Artifacts
 
 on:
   push:
     branches: [ "main" ]
-  # Or use this to only release on tags:
-  # push:
-  #   tags:
-  #     - 'v*.*.*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,38 +24,14 @@ jobs:
         working-directory: ./steamdeck
         run: cargo build --release
 
-      - name: Get version
-        id: get_version
-        run: |
-          echo "VERSION=$(date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_ENV
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Upload server executable as artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ env.VERSION }}
-          release_name: Release ${{ env.VERSION }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: server.exe
+          path: ./server/target/x86_64-pc-windows-gnu/release/server.exe
 
-      - name: Upload server executable
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload steamdeck executable as artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./server/target/x86_64-pc-windows-gnu/release/server.exe
-          asset_name: server.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload steamdeck executable
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./steamdeck/target/release/steamdeck.exe
-          asset_name: steamdeck.exe
-          asset_content_type: application/octet-stream
+          name: steamdeck.exe
+          path: ./steamdeck/target/release/steamdeck.exe
