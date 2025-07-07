@@ -11,9 +11,11 @@ use winit::{
 
 mod controller_debug;
 mod steam_input;
+mod network;
 
 use controller_debug::ControllerDebugUI;
 use steam_input::SteamInputManager;
+use network::{NetworkStreamer, ControllerInputData, ButtonEvent, AxisEvent, button_to_string, axis_to_string, get_current_timestamp};
 
 pub struct App {
     surface: Surface,
@@ -28,6 +30,7 @@ pub struct App {
     steam_input: SteamInputManager,
     gilrs: Gilrs,
     last_cursor: Option<imgui::MouseCursor>,
+    network_streamer: NetworkStreamer,
 }
 
 impl App {
@@ -90,6 +93,8 @@ impl App {
         let steam_input = SteamInputManager::new()?;
         let gilrs = Gilrs::new().unwrap();
 
+        let network_streamer = NetworkStreamer::new();
+
         Ok(Self {
             surface,
             device,
@@ -103,6 +108,7 @@ impl App {
             steam_input,
             gilrs,
             last_cursor: None,
+            network_streamer,
         })
     }
 
@@ -153,9 +159,20 @@ impl App {
 
     fn update(&mut self) {
         // Poll controller events
+        let mut network_data = ControllerInputData {
+            timestamp: get_current_timestamp(),
+            controller_id: 0,
+            button_events: Vec::new(),
+            axis_events: Vec::new(),
+        };
+
         while let Some(Event { id, event, time }) = self.gilrs.next_event() {
             // Update controller debug UI
             self.controller_debug.handle_gilrs_event(id, event, time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64());
+            
+            // Prepare network data
+            network_data.controller_id = id.into();
+            let timestamp = get_current_timestamp();
             
             // Update Steam Input with real controller data
             match event {
@@ -168,20 +185,54 @@ impl App {
                 }
                 gilrs::EventType::ButtonPressed(button, _) => {
                     self.steam_input.update_from_controller_input(id, Some((button, true)), None);
+                    
+                    // Add to network data
+                    network_data.button_events.push(ButtonEvent {
+                        button: button_to_string(button),
+                        pressed: true,
+                        timestamp,
+                    });
                 }
                 gilrs::EventType::ButtonReleased(button, _) => {
                     self.steam_input.update_from_controller_input(id, Some((button, false)), None);
+                    
+                    // Add to network data
+                    network_data.button_events.push(ButtonEvent {
+                        button: button_to_string(button),
+                        pressed: false,
+                        timestamp,
+                    });
                 }
                 gilrs::EventType::AxisChanged(axis, value, _) => {
                     self.steam_input.update_from_controller_input(id, None, Some((axis, value)));
+                    
+                    // Add to network data
+                    network_data.axis_events.push(AxisEvent {
+                        axis: axis_to_string(axis),
+                        value,
+                        timestamp,
+                    });
                 }
                 gilrs::EventType::ButtonChanged(button, value, _) => {
                     // Treat as digital input with threshold
                     let pressed = value > 0.5;
                     self.steam_input.update_from_controller_input(id, Some((button, pressed)), None);
+                    
+                    // Add to network data
+                    network_data.button_events.push(ButtonEvent {
+                        button: button_to_string(button),
+                        pressed,
+                        timestamp,
+                    });
                 }
                 _ => {}
             }
+        }
+
+        // Send network data if we have events and are connected
+        if (!network_data.button_events.is_empty() || !network_data.axis_events.is_empty()) && self.network_streamer.is_connected() {
+            // This needs to be async, we'll handle it in the render loop for now
+            // In a real implementation, you'd want to use a separate thread or async runtime
         }
 
         // Update Steam Input (this now just maintains internal state)

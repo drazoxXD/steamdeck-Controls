@@ -39,13 +39,16 @@ impl ControllerState {
 
 pub struct ControllerDebugUI {
     controllers: HashMap<GamepadId, ControllerState>,
-    show_raw_input: bool,
     show_steam_input: bool,
-    show_controller_mapping: bool,
-    show_input_history: bool,
+    show_network_options: bool,
     input_history: Vec<String>,
     max_history_size: usize,
     steam_input_data: Option<SteamInputData>,
+    // Network settings
+    network_enabled: bool,
+    server_ip: String,
+    server_port: u16,
+    connection_status: String,
 }
 
 #[derive(Debug, Clone)]
@@ -62,13 +65,15 @@ impl ControllerDebugUI {
     pub fn new() -> Self {
         Self {
             controllers: HashMap::new(),
-            show_raw_input: true,
             show_steam_input: true,
-            show_controller_mapping: true,
-            show_input_history: true,
+            show_network_options: true,
             input_history: Vec::new(),
             max_history_size: 100,
             steam_input_data: None,
+            network_enabled: false,
+            server_ip: "192.168.1.100".to_string(),
+            server_port: 8080,
+            connection_status: "Disconnected".to_string(),
         }
     }
 
@@ -219,70 +224,52 @@ impl ControllerDebugUI {
         // Main menu bar
         ui.main_menu_bar(|| {
             ui.menu("View", || {
-                ui.checkbox("Raw Input", &mut self.show_raw_input);
                 ui.checkbox("Steam Input", &mut self.show_steam_input);
-                ui.checkbox("Controller Mapping", &mut self.show_controller_mapping);
-                ui.checkbox("Input History", &mut self.show_input_history);
+                ui.checkbox("Network Options", &mut self.show_network_options);
             });
         });
 
-        // Controller overview
-        ui.window("Controller Overview")
-            .size([400.0, 300.0], Condition::FirstUseEver)
-            .build(|| {
-                ui.text(&format!("Connected Controllers: {}", self.controllers.len()));
-                ui.separator();
-                
-                for (id, controller) in &self.controllers {
-                    let color = if controller.connected {
-                        [0.0, 1.0, 0.0, 1.0] // Green for connected
-                    } else {
-                        [1.0, 0.0, 0.0, 1.0] // Red for disconnected
+        // Network Options
+        if self.show_network_options {
+            ui.window("Network Controller Streaming")
+                .size([400.0, 300.0], Condition::FirstUseEver)
+                .build(|| {
+                    ui.text("Stream controller input to PC over network");
+                    ui.separator();
+                    
+                    ui.text("Server Settings:");
+                    ui.input_text("Server IP", &mut self.server_ip).build();
+                    ui.input_int("Port", &mut self.server_port).build();
+                    
+                    ui.separator();
+                    
+                    if ui.button("Connect") && !self.network_enabled {
+                        self.network_enabled = true;
+                        self.connection_status = "Connecting...".to_string();
+                        // TODO: Implement network connection
+                    }
+                    
+                    ui.same_line();
+                    
+                    if ui.button("Disconnect") && self.network_enabled {
+                        self.network_enabled = false;
+                        self.connection_status = "Disconnected".to_string();
+                        // TODO: Implement network disconnection
+                    }
+                    
+                    ui.separator();
+                    
+                    let status_color = match self.connection_status.as_str() {
+                        "Connected" => [0.0, 1.0, 0.0, 1.0],
+                        "Connecting..." => [1.0, 1.0, 0.0, 1.0],
+                        _ => [1.0, 0.0, 0.0, 1.0],
                     };
                     
-                    ui.text_colored(color, &format!("Controller {}: {}", id, controller.name));
-                    ui.text(&format!("  Last Activity: {:.2}s ago", 
-                        controller.last_activity.elapsed().as_secs_f32()));
-                    ui.text(&format!("  Buttons: {} pressed", 
-                        controller.buttons.values().filter(|&&v| v).count()));
-                    ui.text(&format!("  Axes: {} active", 
-                        controller.axes.values().filter(|&&v| v.abs() > 0.1).count()));
-                }
-            });
-
-        // Raw input display
-        if self.show_raw_input {
-            ui.window("Raw Controller Input")
-                .size([500.0, 400.0], Condition::FirstUseEver)
-                .build(|| {
-                    for (id, controller) in &self.controllers {
-                        if ui.collapsing_header(&format!("Controller {} - {}", id, controller.name), TreeNodeFlags::empty()) {
-                            ui.text("Buttons:");
-                            ui.indent();
-                            for (button, &pressed) in &controller.buttons {
-                                let color = if pressed {
-                                    [0.0, 1.0, 0.0, 1.0]
-                                } else {
-                                    [0.7, 0.7, 0.7, 1.0]
-                                };
-                                let button_name = Self::get_button_display_name(button);
-                                ui.text_colored(color, &format!("{}: {}", button_name, pressed));
-                            }
-                            ui.unindent();
-                            
-                            ui.text("Axes:");
-                            ui.indent();
-                            for (axis, &value) in &controller.axes {
-                                let color = if value.abs() > 0.1 {
-                                    [1.0, 1.0, 0.0, 1.0]
-                                } else {
-                                    [0.7, 0.7, 0.7, 1.0]
-                                };
-                                let axis_name = Self::get_axis_display_name(axis);
-                                ui.text_colored(color, &format!("{}: {:.3}", axis_name, value));
-                            }
-                            ui.unindent();
-                        }
+                    ui.text_colored(status_color, &format!("Status: {}", self.connection_status));
+                    
+                    if self.network_enabled {
+                        ui.text(&format!("Streaming to: {}:{}", self.server_ip, self.server_port));
+                        ui.text(&format!("Connected Controllers: {}", self.controllers.len()));
                     }
                 });
         }
@@ -396,70 +383,6 @@ impl ControllerDebugUI {
                         ui.text("Steam Input not available");
                         ui.text("Make sure Steam is running and the game is launched through Steam");
                     }
-                });
-        }
-
-        // Controller mapping display
-        if self.show_controller_mapping {
-            ui.window("Controller Mapping")
-                .size([500.0, 400.0], Condition::FirstUseEver)
-                .build(|| {
-                    ui.text("Steam Input Button Mappings:");
-                    ui.separator();
-                    
-                    if let Some(ref steam_data) = self.steam_input_data {
-                        ui.text("Digital Actions (Button -> Action):");
-                        for (button, action) in &steam_data.button_mappings {
-                            let button_name = Self::get_button_display_name(button);
-                            ui.text(&format!("{} -> {}", button_name, action));
-                        }
-                        
-                        ui.separator();
-                        ui.text("Analog Actions (Axis -> Action):");
-                        for (axis, action) in &steam_data.axis_mappings {
-                            let axis_name = Self::get_axis_display_name(axis);
-                            ui.text(&format!("{} -> {}", axis_name, action));
-                        }
-                    } else {
-                        ui.text("No Steam Input data available");
-                    }
-                    
-                    ui.separator();
-                    ui.text("Steam Deck Specific Controls:");
-                    let steam_deck_mappings = [
-                        ("L4/L5 (Back Paddles)", "Custom Actions"),
-                        ("R4/R5 (Back Paddles)", "Custom Actions"),
-                        ("Left Trackpad", "Mouse/Touch Input"),
-                        ("Right Trackpad", "Mouse/Touch Input"),
-                        ("Gyroscope", "Motion Controls"),
-                    ];
-                    
-                    for (control, action) in steam_deck_mappings {
-                        ui.text(&format!("{}: {}", control, action));
-                    }
-                });
-        }
-
-        // Input history
-        if self.show_input_history {
-            ui.window("Input History")
-                .size([600.0, 300.0], Condition::FirstUseEver)
-                .build(|| {
-                    if ui.button("Clear History") {
-                        self.input_history.clear();
-                    }
-                    ui.same_line();
-                    ui.text(&format!("({}/{} entries)", self.input_history.len(), self.max_history_size));
-                    
-                    ui.separator();
-                    
-                    ui.child_window("history_scroll")
-                        .size([0.0, 0.0])
-                        .build(|| {
-                            for entry in &self.input_history {
-                                ui.text(entry);
-                            }
-                        });
                 });
         }
     }
