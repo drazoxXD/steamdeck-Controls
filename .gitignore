@@ -1,3 +1,4 @@
 /steamdeck/target
 steamdeck/Cargo.lock
 /server/target
+server/imgui.ini
