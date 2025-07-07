@@ -44,7 +44,7 @@ impl NetworkStreamer {
         }
     }
 
-    pub async fn connect(&mut self, server_ip: &str, port: u16) -> Result<()> {
+    pub async fn connect(&mut self, server_ip: &str, port: i32) -> Result<()> {
         let url = format!("ws://{}:{}", server_ip, port);
         self.server_address = url.clone();
         

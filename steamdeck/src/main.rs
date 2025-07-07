@@ -171,7 +171,7 @@ impl App {
             self.controller_debug.handle_gilrs_event(id, event, time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64());
             
             // Prepare network data
-            network_data.controller_id = id.into();
+            network_data.controller_id = usize::from(id) as u32;
             let timestamp = get_current_timestamp();
             
             // Update Steam Input with real controller data

@@ -47,7 +47,7 @@ pub struct ControllerDebugUI {
     // Network settings
     network_enabled: bool,
     server_ip: String,
-    server_port: u16,
+    server_port: i32,
     connection_status: String,
 }
 
@@ -385,5 +385,17 @@ impl ControllerDebugUI {
                     }
                 });
         }
+    }
+
+    pub fn get_network_settings(&self) -> (bool, String, i32) {
+        (self.network_enabled, self.server_ip.clone(), self.server_port)
+    }
+
+    pub fn set_connection_status(&mut self, status: String) {
+        self.connection_status = status;
+    }
+
+    pub fn set_network_enabled(&mut self, enabled: bool) {
+        self.network_enabled = enabled;
     }
 }

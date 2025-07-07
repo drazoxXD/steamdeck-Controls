@@ -192,7 +192,7 @@ impl ControllerReceiver {
                     ui.next_column();
                 }
                 
-                ui.columns(1, "");
+                ui.columns(1, "", false);
             });
 
         // Statistics Window
