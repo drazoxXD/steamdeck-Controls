@@ -32,6 +32,7 @@ This project consists of two applications:
 - SteamOS (Arch + KDE)
 - Rust toolchain
 - Connected controller
+- Optional: GUI dependencies (for ImGui version)
 
 **Windows PC:**
 - Windows 11
@@ -49,7 +50,10 @@ This project consists of two applications:
 2. **Build SteamDeck Client:**
    ```bash
    cd steamdeck
-   cargo build --release
+   # For GUI version (with ImGui interface)
+   cargo build --release --features gui
+   # OR for console version (if GUI has issues)
+   cargo build --release --no-default-features --bin steamdeck-console
    ```
 
 3. **Build Windows Host:**
