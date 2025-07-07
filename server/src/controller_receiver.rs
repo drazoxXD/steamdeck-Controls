@@ -1,7 +1,7 @@
 use imgui::*;
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::{ButtonEvent, AxisEvent, ControllerInputData};
+use crate::ControllerInputData;
 
 #[derive(Debug, Clone)]
 pub struct ReceivedInputEvent {
