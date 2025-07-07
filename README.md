@@ -37,6 +37,9 @@ Turn your SteamDeck into a wireless Xbox 360 controller! This project sends butt
 
 ## ❓ FAQ
 
+**Why should i use this?**  
+> Well, it's better to use this because other methods simply stream the entire game, which can add more latency. Also, when you're done, you need to fully restart your deck so the controls work again! (I'm mainly talking about VirtualHere, which is almost the same as this, but that "steals" the control from Steam, so you need a full restart to shut it down!)
+
 **Will there be a UI overhaul?**  
 > No, there are currently no plans to redesign the interface.
 
